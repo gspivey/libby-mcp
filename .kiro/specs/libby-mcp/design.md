@@ -105,6 +105,7 @@ A shared HTTP client for the OverDrive Thunder API:
 - Validates the **MCP server's own API key** (not a Thunder API key — Thunder is public)
 - Reads expected key from `os.environ["LIBBY_MCP_API_KEY"]`
 - Validates `Authorization: Bearer <key>` header on incoming MCP requests
+- Uses **case-insensitive** header name lookup (API Gateway HTTP API lowercases all headers, so the key arrives as `authorization`)
 - Constant-time comparison via `hmac.compare_digest`
 
 ### 6. Infrastructure (`infra/`)
@@ -630,7 +631,13 @@ libby-mcp/
 │       ├── get_availability.py # get_availability tool (raw availability data retrieval)
 │       └── deep_link.py        # get_deep_link tool (URL construction)
 ├── infra/
-│   └── libby-mcp-stack.ts           # CDK stack
+│   ├── bin/
+│   │   └── libby-mcp.ts             # CDK app entry point
+│   ├── lib/
+│   │   └── libby-mcp-stack.ts       # Stack definition
+│   ├── cdk.json                     # CDK configuration
+│   ├── package.json                 # CDK dependencies
+│   └── tsconfig.json                # TypeScript config
 ├── tests/
 │   ├── __init__.py
 │   ├── conftest.py             # Shared fixtures, mock Thunder responses
@@ -652,7 +659,6 @@ libby-mcp/
 ├── requirements.txt            # Pinned runtime dependencies
 ├── requirements-dev.txt        # Pinned dev dependencies (pytest, ruff, mypy, pre-commit)
 ├── .pre-commit-config.yaml     # Pre-commit hooks: ruff lint/format + mypy
-├── cdk.json              # CDK configuration
 ├── Makefile                    # make test, make lint, make ci, make preflight
 ├── TEMPLATE_INVENTORY.md       # Delta between agent-router-template and implementation
 └── README.md

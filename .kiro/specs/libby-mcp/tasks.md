@@ -4,7 +4,7 @@
 
 **Red-Commit / Green-PR Rule:** Tests-first and implementation land in the SAME PR. Red (failing tests committed before implementation) is allowed at commit granularity, never at merge. Every PR must be green before merge — CI enforces this via required status checks.
 
-**Tasks 2-9 are ONE PR.** The TDD cycle within this PR:
+**Tasks 2-9 are ONE PR.** This grouping is intentional — ROADMAP.md must reflect it as a single item (not split across multiple PRs). The TDD cycle within this PR:
 1. Write tests (Task 2) — committed as red (collection errors expected because implementation modules don't exist yet).
 2. Implement modules (Tasks 3-9) — tests go green incrementally.
 3. All tests pass before the PR merges.
@@ -137,7 +137,6 @@ This allows `pytest --collect-only` to succeed even before implementation lands,
         assert True, "Smoke test — project is importable"
     ```
     This ensures `make test` exits 0 even before implementation tests are written.
-12. Create `cdk.json` placeholder in repo root (actual CDK config lives in `infra/`).
 
 **Acceptance Criteria:**
 - Project installs cleanly with `pip install -e .`
@@ -173,9 +172,9 @@ This allows `pytest --collect-only` to succeed even before implementation lands,
    ```yaml
    on:
      push:
-       branches: [main]
+       branches: [main, development]
      pull_request:
-       branches: [main]
+       branches: [development]
      schedule:
        - cron: '0 6 * * *'  # Daily at 6 AM UTC for integration tests
      workflow_dispatch:       # Manual trigger
@@ -342,6 +341,7 @@ This allows `pytest --collect-only` to succeed even before implementation lands,
    - Test invalid token fails
    - Test missing Authorization header fails
    - Test malformed header (no "Bearer " prefix) fails
+   - Test lowercase `authorization` header key passes (API Gateway HTTP API lowercases headers)
 3. Create `tests/test_mcp_server.py`:
    - Test `initialize` returns `{protocolVersion: "2025-06-18", capabilities: {tools: {}}, serverInfo: {name: "libby-mcp", version: "1.0.0"}}`
    - Test `ping` returns empty result `{}` (not -32601 error)
@@ -449,7 +449,7 @@ This allows `pytest --collect-only` to succeed even before implementation lands,
 **Steps:**
 1. Create `src/auth.py` with a `validate_api_key(headers: dict) -> bool` function.
 2. Read the expected API key from `os.environ["LIBBY_MCP_API_KEY"]`.
-3. Extract the Bearer token from the `Authorization` header.
+3. Extract the Bearer token from the `Authorization` header using **case-insensitive** header lookup (API Gateway HTTP API lowercases all header names, so the header arrives as `authorization`; normalize keys to lowercase before lookup to handle both cases).
 4. Compare using constant-time comparison (`hmac.compare_digest`).
 5. Return `True` for valid keys, `False` for invalid/missing.
 6. Never log the key value — only log "auth success" or "auth failed".
@@ -639,18 +639,21 @@ This allows `pytest --collect-only` to succeed even before implementation lands,
    mkdir -p infra && cd infra
    npx cdk init app --language typescript
    ```
-2. Install CDK constructs for Lambda, API Gateway, Secrets Manager:
+2. Install CDK constructs (CDK v2 uses `aws-cdk-lib` which is included by `cdk init`; install only the alpha bundling construct and `constructs`):
    ```bash
-   npm install @aws-cdk/aws-lambda @aws-cdk/aws-apigatewayv2 @aws-cdk/aws-secretsmanager
+   npm install constructs @aws-cdk/aws-lambda-python-alpha
    ```
+   Use imports from `aws-cdk-lib` submodules: `aws-cdk-lib/aws-lambda`, `aws-cdk-lib/aws-apigatewayv2`, `aws-cdk-lib/aws-secretsmanager`. Use `@aws-cdk/aws-lambda-python-alpha` for `PythonFunction` (handles pip install bundling automatically).
 3. Create `lib/libby-mcp-stack.ts` with:
-   - Lambda function: Python 3.12, ARM64, 256MB memory, 30s timeout
-   - Handler: `src/handler.handler`
-   - Code asset pointing to `../` (the Python source)
+   - Lambda function using `PythonFunction` from `@aws-cdk/aws-lambda-python-alpha`: Python 3.12, ARM64, 256MB memory, 30s timeout
+   - `entry` pointing to `'..'` (the repo root, relative to `infra/lib/`; PythonFunction bundles dependencies from `requirements.txt` found in the entry directory)
+   - `index`: `'src/handler.py'` (path to the Python module within the entry directory)
+   - `handler`: `'lambda_handler'` (the bare function name exported from the index module)
+   - Note: PythonFunction uses `index` (file path) + `handler` (function name), NOT the `module.function` format used by `lambda.Function`. The entry is repo root so `src/` is preserved as a package in the zip — imports like `from src.auth import ...` work correctly.
    - API Gateway HTTP API with `POST /mcp` route integrated to Lambda
    - Secrets Manager secret using `generateSecretString()` for API key
-   - Lambda environment variable `LIBBY_MCP_API_KEY` from secret
-   - IAM role with CloudWatch Logs write + Secrets Manager read permissions
+   - Lambda environment variable `LIBBY_MCP_API_KEY` injected via `secret.secretValue.unsafeUnwrap()` (resolves the secret value at synth/deploy time into the environment variable directly; no runtime Secrets Manager read needed, so no `secretsmanager:GetSecretValue` IAM grant is required)
+   - IAM role with CloudWatch Logs write permissions (Secrets Manager read NOT needed — secret is resolved at deploy time via unsafeUnwrap)
    - CloudWatch log group with 14-day retention
 4. Configure API Gateway throttling: 10 req/s burst, 5 req/s sustained.
 5. Add CDK outputs:
