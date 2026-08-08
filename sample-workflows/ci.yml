@@ -1,0 +1,247 @@
+name: CI
+
+# Auto-detecting CI for the agent-router loop.
+#
+# This workflow runs the project's checks, builds a report.md from the real
+# outcomes, and posts that report back to the PR as a github-actions[bot]
+# comment. That comment (a Tier-1 author) is what wakes the agent-router
+# daemon, which is why the agent never polls CI: it pushes, stops, and waits
+# for the post-back. The check_run completion event is a second wake path.
+#
+# Toolchain is auto-detected at runtime:
+#   - Python   (tests/ + a manifest or pytest config)      -> ruff (if present) + pytest
+#   - Node.js  (package.json)                               -> npm ci && npm test
+#   - Rust     (Cargo.toml)                                 -> cargo test
+#   - none of the above                                     -> neutral pass ("no tests found")
+#
+# It must be green on the empty template (no src/ or tests/ yet): with nothing
+# to run, the check steps are skipped and the report records a neutral pass.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - development
+      - 'agent/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Auto-detect the toolchain ──────────────────────────────────────────
+      # A single detection step writes booleans to $GITHUB_OUTPUT so each
+      # language's setup + check steps can gate on `if:` without re-globbing.
+      - name: Detect toolchain
+        id: detect
+        run: |
+          has_python=false
+          has_node=false
+          has_rust=false
+
+          # Python: a tests dir or test files, plus a project/deps manifest or a
+          # pytest discovery config (pytest.ini/conftest.py count — design.md
+          # sanctions them as the minimal pytest-discovery option).
+          if { [ -d tests ] || ls test_*.py *_test.py 2>/dev/null | grep -q .; } \
+             && { [ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ] || [ -f setup.cfg ] || [ -f pytest.ini ] || [ -f conftest.py ]; }; then
+            has_python=true
+          fi
+
+          # Node.js: a package.json with a "test" script (npm test fails loudly
+          # otherwise, which would defeat green-on-empty for scaffolds).
+          if [ -f package.json ] && grep -q '"test"' package.json; then
+            has_node=true
+          fi
+
+          # Rust: any Cargo.toml (workspace root or crate).
+          if [ -f Cargo.toml ]; then
+            has_rust=true
+          fi
+
+          {
+            echo "python=${has_python}"
+            echo "node=${has_node}"
+            echo "rust=${has_rust}"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Detected -> python=${has_python} node=${has_node} rust=${has_rust}"
+
+      # ── Python toolchain ───────────────────────────────────────────────────
+      - name: Set up Python
+        if: steps.detect.outputs.python == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        if: steps.detect.outputs.python == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install -e . || true; fi
+          pip install pytest
+
+      - name: Lint (ruff)
+        id: ruff
+        if: steps.detect.outputs.python == 'true'
+        continue-on-error: true
+        run: |
+          if python -m ruff --version >/dev/null 2>&1 || command -v ruff >/dev/null 2>&1; then
+            ruff check . 2>&1 | tee ruff-output.txt
+          else
+            echo "ruff not installed; skipping lint" | tee ruff-output.txt
+          fi
+
+      - name: Test (pytest)
+        id: pytest
+        if: steps.detect.outputs.python == 'true'
+        continue-on-error: true
+        run: pytest --junitxml=test-results.xml
+
+      # ── Node.js toolchain ──────────────────────────────────────────────────
+      - name: Set up Node.js
+        if: steps.detect.outputs.node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Node dependencies
+        if: steps.detect.outputs.node == 'true'
+        run: npm ci || npm install
+
+      - name: Test (npm)
+        id: npm_test
+        if: steps.detect.outputs.node == 'true'
+        continue-on-error: true
+        run: npm test
+
+      # ── Rust toolchain ─────────────────────────────────────────────────────
+      - name: Set up Rust
+        if: steps.detect.outputs.rust == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test (cargo)
+        id: cargo_test
+        if: steps.detect.outputs.rust == 'true'
+        continue-on-error: true
+        run: cargo test --all
+
+      # ── Build the report ───────────────────────────────────────────────────
+      # Always runs. Reflects the real outcome of whichever check steps ran;
+      # a skipped step has outcome "skipped" and is reported as "n/a". With no
+      # detected toolchain, the report is a neutral pass ("no tests found").
+      - name: Build report
+        if: always()
+        env:
+          RUN_LINK: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DETECT_PYTHON: ${{ steps.detect.outputs.python }}
+          DETECT_NODE: ${{ steps.detect.outputs.node }}
+          DETECT_RUST: ${{ steps.detect.outputs.rust }}
+          OUT_RUFF: ${{ steps.ruff.outcome }}
+          OUT_PYTEST: ${{ steps.pytest.outcome }}
+          OUT_NPM: ${{ steps.npm_test.outcome }}
+          OUT_CARGO: ${{ steps.cargo_test.outcome }}
+        run: |
+          report=report.md
+
+          # Map a step outcome to a human/markdown status. Empty or "skipped"
+          # means the step did not run for this toolchain -> not applicable.
+          status() {
+            case "$1" in
+              success)            echo "pass" ;;
+              failure)            echo "FAIL" ;;
+              ""|skipped|cancelled) echo "n/a" ;;
+              *)                  echo "$1" ;;
+            esac
+          }
+
+          # Determine overall result: fail only if a check that actually ran
+          # reported failure. No detected toolchain -> neutral pass.
+          overall="pass"
+          ran_any=false
+          for o in "$OUT_PYTEST" "$OUT_NPM" "$OUT_CARGO" "$OUT_RUFF"; do
+            case "$o" in
+              success) ran_any=true ;;
+              failure) ran_any=true; overall="FAIL" ;;
+            esac
+          done
+
+          {
+            echo "## CI Report"
+            echo ""
+            if [ "$ran_any" = "true" ]; then
+              if [ "$overall" = "pass" ]; then
+                echo "Result: **passed**"
+              else
+                echo "Result: **failed**"
+              fi
+            else
+              echo "Result: **passed** (no tests found — neutral pass)"
+            fi
+            echo ""
+            echo "Commit: \`${GITHUB_SHA:0:8}\`"
+            echo ""
+            echo "| Check | Status |"
+            echo "| --- | --- |"
+            echo "| Lint (ruff) | $(status "$OUT_RUFF") |"
+            echo "| Test (pytest) | $(status "$OUT_PYTEST") |"
+            echo "| Test (npm) | $(status "$OUT_NPM") |"
+            echo "| Test (cargo) | $(status "$OUT_CARGO") |"
+            echo ""
+            echo "Detected toolchain: python=\`${DETECT_PYTHON}\` node=\`${DETECT_NODE}\` rust=\`${DETECT_RUST}\`"
+            echo ""
+          } > "$report"
+
+          # Inline a short JUnit summary when pytest produced one.
+          if [ -f test-results.xml ]; then
+            tests=$(grep -oE 'tests="[0-9]+"' test-results.xml | head -1 | grep -oE '[0-9]+' || echo "?")
+            failures=$(grep -oE 'failures="[0-9]+"' test-results.xml | head -1 | grep -oE '[0-9]+' || echo "?")
+            errors=$(grep -oE 'errors="[0-9]+"' test-results.xml | head -1 | grep -oE '[0-9]+' || echo "0")
+            skipped=$(grep -oE 'skipped="[0-9]+"' test-results.xml | head -1 | grep -oE '[0-9]+' || echo "0")
+            {
+              echo "### Test results (JUnit)"
+              echo ""
+              echo "- ${tests} tests, ${failures} failures, ${errors} errors, ${skipped} skipped"
+              echo ""
+            } >> "$report"
+          fi
+
+          {
+            echo "[View run](${RUN_LINK})"
+          } >> "$report"
+
+          echo "----- report.md -----"
+          cat "$report"
+
+          # Surface the real overall result to the job (so the check_run that
+          # wakes the agent reflects pass/fail). The report is already written.
+          if [ "$overall" = "FAIL" ]; then
+            exit 1
+          fi
+
+      # ── Post the report back to the PR ─────────────────────────────────────
+      # Gated on the ENABLE_PR_COMMENTS Actions variable and pull_request
+      # events only. continue-on-error so a posting failure (e.g. permissions)
+      # falls through to the step-summary fallback below instead of erroring.
+      - name: Post PR comment
+        id: post_comment
+        if: always() && github.event_name == 'pull_request' && vars.ENABLE_PR_COMMENTS == 'true'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment ${{ github.event.pull_request.number }} --body-file report.md
+
+      # ── Fallback: step summary ─────────────────────────────────────────────
+      # Runs when the comment was not posted: the var is off (step skipped) or
+      # the post failed. Either way the report is preserved in the run summary.
+      - name: Fallback to step summary
+        if: always() && steps.post_comment.outcome != 'success'
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY"

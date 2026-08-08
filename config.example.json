@@ -1,0 +1,96 @@
+{
+  // ---------------------------------------------------------------------------
+  // Example agent-router config for a repo created from
+  // GerardsCuriousTech/agent-router-template.
+  //
+  // This is a JSONC-style example (comments + the // ENV: convention). Copy it
+  // into your agent-router checkout as config.json and edit the placeholders:
+  //   cp config.example.json config.json
+  //
+  // Any string value MAY be "ENV:VAR_NAME", which the daemon resolves from the
+  // named environment variable at startup. Keep real secrets out of this file;
+  // use ENV: references and export the variables in the shell/unit that launches
+  // the daemon. See docs/agent-router-setup.md for the full runbook.
+  //
+  // Replace these placeholders before use: <owner>, <repo>.
+  // ---------------------------------------------------------------------------
+
+  // REQUIRED. Port the local webhook server listens on. Your cloudflared tunnel
+  // forwards to this; the GitHub Payload URL is https://<tunnel>/webhook.
+  "port": 3000,
+
+  // REQUIRED. Global HMAC-SHA256 secret used to verify incoming webhook
+  // payloads. Acts as the fallback for any repo without its own webhookSecret.
+  // Must equal the Secret you set on the GitHub webhook. Generate with:
+  //   openssl rand -hex 32
+  "webhookSecret": "ENV:GITHUB_WEBHOOK_SECRET",
+
+  // REQUIRED. Absolute path to the agent CLI executable the daemon drives over
+  // ACP (Kiro CLI in the reference setup). Replace with your real path.
+  "kiroPath": "/path/to/kiro",
+
+  // OPTIONAL. Default GitHub PAT used for any repo that does not set its own
+  // token below. Token resolution per repo is: repos[i].token ->
+  // defaultGithubToken -> error if neither is set. MUST carry Contents RW +
+  // Pull requests RW + Commit statuses/Checks read (fine-grained), or the
+  // classic "repo" scope. This is load-bearing: per prompts/agent-router.md the
+  // agent HALTS on the first 401/403 and does NOT route around it (no
+  // token-in-URL, no alternate write path), so a token missing write scope
+  // stalls every session until a human fixes it. If a shared default token
+  // lacks write on a given repo, set a per-repo `token` below with the right
+  // scope rather than relying on this default.
+  "defaultGithubToken": "ENV:GITHUB_TOKEN",
+
+  // OPTIONAL. Minimum seconds between wakes for the same PR. Default: 60.
+  "rateLimit": {
+    "perPRSeconds": 60
+  },
+
+  // OPTIONAL. Session lifetime controls. Values below are the defaults.
+  "sessionTimeout": {
+    "inactivityMinutes": 5,
+    "maxLifetimeMinutes": 120,
+    "gracePeriodAfterMergeSeconds": 60
+  },
+
+  // REQUIRED. The repos the daemon watches. This template ships exactly one
+  // entry for your repository.
+  "repos": [
+    {
+      // REQUIRED. GitHub org or user that owns the repo.
+      "owner": "<owner>",
+
+      // REQUIRED. Repository name.
+      "name": "<repo>",
+
+      // OPTIONAL. Per-repo PAT; overrides defaultGithubToken for this repo.
+      // Uncomment and export the referenced var to use a dedicated token.
+      // "token": "ENV:GH_TOKEN_MY_REPO",
+
+      // OPTIONAL. Per-repo webhook HMAC secret; overrides the top-level
+      // webhookSecret. Set this only if this repo's GitHub webhook uses a
+      // different secret. Falls back to the top-level webhookSecret above.
+      // "webhookSecret": "ENV:WEBHOOK_SECRET_MY_REPO",
+
+      // OPTIONAL. Path (in the repo) to the serialized work queue, for future
+      // use; the daemon records it but the agent currently selects items per
+      // prompts/agent-router.md. Matches this template's layout.
+      "roadmapPath": "ROADMAP.md"
+    }
+  ]
+
+  // OPTIONAL. Scheduled cron sessions. Uncomment to have the daemon spawn a
+  // session on a schedule with no incoming webhook. The promptFile contents are
+  // used verbatim as the session prompt on each fire. "repo" must match an
+  // owner/name pair in repos[] above. See the agent-router README's
+  // "Cron sessions" section and docs/agent-router-setup.md.
+  //
+  // "cron": [
+  //   {
+  //     "name": "daily-roadmap",
+  //     "schedule": "0 9 * * 1-5",
+  //     "repo": "<owner>/<repo>",
+  //     "promptFile": "/etc/agent-router/prompts/<repo>.md"
+  //   }
+  // ]
+}

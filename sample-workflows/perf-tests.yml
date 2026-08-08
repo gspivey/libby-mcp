@@ -1,0 +1,155 @@
+name: Performance Tests
+
+# TEMPLATE performance-test workflow.
+#
+# This is a starting point you customize for your project. It is meant to be
+# triggered on demand — the agent runs it with `gh workflow run perf-tests.yml`
+# after CI is green for a PR, rather than on every push, because perf runs are
+# slow and/or need dedicated infrastructure. As shipped it runs a placeholder
+# step that writes a results file, uploads it as an artifact (90-day retention),
+# and posts a short summary back to the PR for the branch.
+#
+# Replace the clearly marked "Run performance tests" step with your real
+# benchmark. Post-back behavior matches the other workflows: build report.md,
+# post it to the PR as a github-actions[bot] comment when ENABLE_PR_COMMENTS is
+# set, falling back to the run step summary. Because workflow_dispatch carries
+# no PR context, the PR number is resolved from the branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Benchmark duration in seconds'
+        required: false
+        default: '60'
+      scenario:
+        description: 'Benchmark scenario to run'
+        required: false
+        default: 'default'
+        type: choice
+        options:
+          - 'default'
+          - 'smoke'
+          - 'stress'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  perf-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Resolve the PR for this branch ─────────────────────────────────────
+      # workflow_dispatch has no pull_request payload, so find the open PR whose
+      # head is the current branch. Empty if there is none (the post-back then
+      # falls back to the step summary).
+      - name: Resolve PR number
+        id: pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR=$(gh pr list --head "${{ github.ref_name }}" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          echo "number=${PR}" >> "$GITHUB_OUTPUT"
+          echo "PR number: ${PR:-none}"
+
+      # ───────────────────────────────────────────────────────────────────────
+      # PLACEHOLDER: Run performance tests
+      # ───────────────────────────────────────────────────────────────────────
+      # Replace this step with your real benchmark. Requirements:
+      #   - Run with `continue-on-error: true` and keep the `id: tests` so the
+      #     report always reflects the real outcome (`steps.tests.outcome`).
+      #   - Honor the workflow inputs: duration=${{ inputs.duration }} and
+      #     scenario=${{ inputs.scenario }} (defaults applied above).
+      #   - Write your results under the `perf-results/` directory; everything
+      #     there is uploaded as an artifact and the report summarizes any
+      #     `perf-results/summary.md` you produce.
+      #   - Set up any toolchain / infrastructure / credentials above this step.
+      #
+      # The placeholder below writes a small summary so the template is
+      # demonstrable out of the box. Delete it when you add real benchmarks.
+      - name: Run performance tests
+        id: tests
+        continue-on-error: true
+        env:
+          DURATION: ${{ inputs.duration }}
+          SCENARIO: ${{ inputs.scenario }}
+        run: |
+          echo "PLACEHOLDER perf-tests step — replace with your benchmark."
+          echo "duration=${DURATION}s scenario=${SCENARIO}"
+          mkdir -p perf-results
+          {
+            echo "### Benchmark"
+            echo ""
+            echo "- scenario: \`${SCENARIO}\`"
+            echo "- duration: \`${DURATION}s\`"
+            echo "- (placeholder — no real measurements collected)"
+          } > perf-results/summary.md
+
+      # ── Build the report ───────────────────────────────────────────────────
+      - name: Build report
+        if: always()
+        env:
+          RUN_LINK: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          OUTCOME: ${{ steps.tests.outcome }}
+          SCENARIO: ${{ inputs.scenario }}
+          DURATION: ${{ inputs.duration }}
+        run: |
+          report=report.md
+          {
+            echo "## Performance Test Report"
+            echo ""
+            case "$OUTCOME" in
+              success)  echo "Result: **completed**" ;;
+              failure)  echo "Result: **failed**" ;;
+              *)        echo "Result: **${OUTCOME:-not run}**" ;;
+            esac
+            echo ""
+            echo "Scenario: \`${SCENARIO}\` | Duration: \`${DURATION}s\` | Commit: \`${GITHUB_SHA:0:8}\`"
+            echo ""
+          } > "$report"
+
+          if [ -f perf-results/summary.md ]; then
+            cat perf-results/summary.md >> "$report"
+            echo "" >> "$report"
+          else
+            {
+              echo "_No results summary (perf-results/summary.md) was produced._"
+              echo ""
+            } >> "$report"
+          fi
+
+          echo "[View run](${RUN_LINK})" >> "$report"
+
+          echo "----- report.md -----"
+          cat "$report"
+
+      # ── Upload results artifact (90-day retention) ─────────────────────────
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: perf-results/
+          retention-days: 90
+          if-no-files-found: ignore
+
+      # ── Post the report back to the PR ─────────────────────────────────────
+      # Gated on ENABLE_PR_COMMENTS and a resolved PR number. continue-on-error
+      # so a posting failure falls through to the step-summary fallback.
+      - name: Post PR comment
+        id: post_comment
+        if: always() && vars.ENABLE_PR_COMMENTS == 'true' && steps.pr.outputs.number != ''
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment ${{ steps.pr.outputs.number }} --body-file report.md
+
+      - name: Fallback to step summary
+        if: always() && steps.post_comment.outcome != 'success'
+        run: cat report.md >> "$GITHUB_STEP_SUMMARY"
