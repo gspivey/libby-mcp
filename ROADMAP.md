@@ -25,34 +25,78 @@ large-scale example of this format in a production project, see the ROADMAP of
 
 ## Active Roadmap
 
-> **These two items are the bundled EXAMPLE.** They serialize the throwaway
-> [`greet` command-line tool](.kiro/specs/example-feature/) spec so the agent-router loop is
-> demonstrable the moment you create a repo from this template. **Delete both items (and the
-> `.kiro/specs/example-feature/` directory) and replace them with the serialized form of
-> your own spec.** See [`docs/roadmap-from-kiro-specs.md`](docs/roadmap-from-kiro-specs.md)
-> for the worked walkthrough that produced exactly these two items.
+> **Libby MCP Server** — an MCP server exposing OverDrive/Libby library catalog search
+> to Claude/Kiro. Three fact-finding tools (no recommendations or advisory logic — the
+> LLM caller does reasoning). Serialized from `.kiro/specs/libby-mcp/` after 8 Kiro
+> revisions and 10 Claude reviews.
 
-### 1. Greeting function and default output
+### 1. Project scaffolding, CI, and test harness
 
-Implement the core `greet(name: str | None) -> str` function at `src/greet.py` and wire up
-the `argparse` CLI so that running the tool with no arguments prints `Hello, world!`. This
-item establishes the module layout (`python -m greet` / `python src/greet.py`) and the
-`pytest` harness; the default-greeting test asserts the no-argument behavior end to end.
-This is the foundation item — item 2 extends the CLI it creates.
+Clone `agent-router-template`, extend the directory layout for a Python Lambda MCP server,
+and establish the harness engineering foundations: pytest fixtures for Thunder API mocking,
+CI pipeline with lint/typecheck/test/integration jobs targeting `development` branch,
+pre-commit hooks, and the agent feedback harness (`check_compliance.py`). Copy spec context
+files into `docs/references/` so the agent can look up Thunder API details without external
+searches. Creates the AGENTS.md navigation document and Makefile with standard targets.
+This is the foundation — all implementation PRs land on top of it.
 
-- Spec: `.kiro/specs/example-feature/` · tasks `1.1`, `1.2`
+- Spec: `.kiro/specs/libby-mcp/` · tasks `0`, `1`, `1a`, `1b`
 - [ ] Complete · PR: —
 
 ---
 
-### 2. `--name` option
+### 2. TDD tests and full implementation (Tasks 2-9)
 
-Add the `--name <NAME>` option to the CLI so that `greet(name)` returns `Hello, <NAME>!`
-and `python -m greet --name Ada` prints `Hello, Ada!`. Builds directly on the `greet()`
-function and CLI scaffold merged in item 1; the option-handling test covers a supplied name
-alongside the preserved default. No new module or dependency is introduced.
+**This is a single large PR** per the spec's "Tasks 2-9 are ONE PR" workflow policy. The
+TDD cycle within this PR:
+1. Write all unit tests (Task 2) — committed as red (tests skip via `pytest.importorskip`)
+2. Implement modules (Tasks 3-9) — tests go green incrementally
+3. All tests pass before the PR merges
 
-- Spec: `.kiro/specs/example-feature/` · tasks `2.1`, `2.2`
+**Task 2 — Test specifications:** Unit tests for Thunder client (timeout, retries, response
+parsing), auth module (case-insensitive `authorization` header, Bearer token extraction,
+401 on missing/invalid), MCP server (`isError: true` envelope, JSON-RPC validation), and
+all three tools (search_titles filters, get_availability batch, get_deep_link URL format).
+
+**Task 3 — Thunder client:** `src/thunder_client.py` — HTTP client for OverDrive Thunder API.
+10s timeout, structured error dict on failure, `User-Agent: libby-mcp/1.0`.
+
+**Task 4 — Auth module:** `src/auth.py` — case-insensitive header lookup (API Gateway HTTP
+API lowercases headers), Bearer token extraction, `LIBBY_MCP_API_KEY` env var comparison.
+
+**Task 5 — MCP server:** `src/mcp_server.py` — JSON-RPC 2.0 protocol layer. Request
+validation, tool dispatch, error envelope (`isError: true, content: [{type: "text", text}]`).
+
+**Task 6 — search_titles:** `src/tools/search_titles.py` — catalog search with 11 filter
+params. Calls `/v2/libraries/{slug}/media`. Returns `{titles[], facets, total_items, page,
+total_pages, filtered_count}`.
+
+**Task 7 — get_availability:** `src/tools/availability.py` — batch availability lookup.
+Calls `/v2/libraries/{slug}/media/availability?titleIds=...`. Returns raw counts only.
+
+**Task 8 — get_deep_link:** `src/tools/deep_link.py` — generates
+`https://libbyapp.com/library/{slug}/.../{title_id}` URL. No API call.
+
+**Task 9 — Lambda handler:** `src/handler.py` — API Gateway event parsing, auth check,
+MCPServer dispatch, response formatting. Module-level Thunder client for warm invocations.
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
+- [ ] Complete · PR: —
+
+---
+
+### 3. AWS infrastructure (CDK) and integration tests
+
+Create the CDK stack at `infra/lib/libby-mcp-stack.ts` using `PythonFunction` from
+`@aws-cdk/aws-lambda-python-alpha` for automatic dependency bundling. Lambda: Python 3.12,
+ARM64, 256MB, 30s timeout. API Gateway HTTP API with `POST /mcp` route. Secrets Manager
+for auto-generated API key injected via `unsafeUnwrap()` into env var — no runtime Secrets
+Manager read needed. Deploy/destroy scripts in `scripts/`. Integration tests at
+`tests/integration/test_live.py` — gated with `RUN_INTEGRATION=1`, tests against real
+Thunder API, validates response shapes. Branch protection for `development`. This item
+makes the server deployable.
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `10`, `11`, `12`
 - [ ] Complete · PR: —
 
 ---
