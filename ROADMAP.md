@@ -41,7 +41,7 @@ searches. Creates the AGENTS.md navigation document and Makefile with standard t
 This is the foundation — all implementation PRs land on top of it.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `0`, `1`, `1a`, `1b`
-- [ ] Complete · PR: —
+- [x] Complete · PR: #2
 
 ---
 
@@ -105,4 +105,7 @@ makes the server deployable.
 
 Items move here after they merge to `development`.
 
-*(none yet)*
+### 1. Project scaffolding, CI, and test harness
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `0`, `1`, `1a`, `1b`
+- [x] Complete · PR: #2
