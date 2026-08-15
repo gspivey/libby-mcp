@@ -31,12 +31,12 @@ class TestInitialize:
         assert response["jsonrpc"] == "2.0"
         assert response["id"] == 1
         result = response["result"]
-        assert result["protocolVersion"] == "2025-06-18", (
-            "REMEDIATION: MCPServer initialize must return protocolVersion '2025-06-18'"
-        )
-        assert result["capabilities"] == {"tools": {}}, (
-            "REMEDIATION: MCPServer initialize must return capabilities: {tools: {}}"
-        )
+        assert (
+            result["protocolVersion"] == "2025-06-18"
+        ), "REMEDIATION: MCPServer initialize must return protocolVersion '2025-06-18'"
+        assert result["capabilities"] == {
+            "tools": {}
+        }, "REMEDIATION: MCPServer initialize must return capabilities: {tools: {}}"
         assert result["serverInfo"] == {
             "name": "libby-mcp",
             "version": "1.0.0",
@@ -52,9 +52,9 @@ class TestPing:
         response = server.handle_request(request)
         assert response["jsonrpc"] == "2.0"
         assert response["id"] == 2
-        assert response["result"] == {}, (
-            "REMEDIATION: MCPServer.ping must return empty result {}, not method-not-found error"
-        )
+        assert (
+            response["result"] == {}
+        ), "REMEDIATION: MCPServer.ping must return empty result {}, not method-not-found error"
         assert "error" not in response
 
 
@@ -69,9 +69,9 @@ class TestToolsList:
         tools = response["result"]["tools"]
         tool_names = [t["name"] for t in tools]
         assert "search_titles" in tool_names, "REMEDIATION: tools/list must include search_titles"
-        assert "get_availability" in tool_names, (
-            "REMEDIATION: tools/list must include get_availability"
-        )
+        assert (
+            "get_availability" in tool_names
+        ), "REMEDIATION: tools/list must include get_availability"
         assert "get_deep_link" in tool_names, "REMEDIATION: tools/list must include get_deep_link"
 
     def test_tools_have_input_schema(self, server) -> None:
@@ -80,9 +80,9 @@ class TestToolsList:
         response = server.handle_request(request)
         tools = response["result"]["tools"]
         for tool in tools:
-            assert "inputSchema" in tool, (
-                f"REMEDIATION: tool '{tool['name']}' must have inputSchema"
-            )
+            assert (
+                "inputSchema" in tool
+            ), f"REMEDIATION: tool '{tool['name']}' must have inputSchema"
 
 
 class TestToolsCall:
@@ -101,9 +101,9 @@ class TestToolsCall:
             },
         }
         response = server.handle_request(request)
-        assert "result" in response, (
-            "REMEDIATION: tools/call must return a result for valid tool invocations"
-        )
+        assert (
+            "result" in response
+        ), "REMEDIATION: tools/call must return a result for valid tool invocations"
 
     def test_tool_result_format(self, server) -> None:
         """AC-6.5: Tool results use text content blocks."""
@@ -120,12 +120,12 @@ class TestToolsCall:
         result = response["result"]
         assert "content" in result, "REMEDIATION: Tool results must have 'content' key"
         assert len(result["content"]) >= 1
-        assert result["content"][0]["type"] == "text", (
-            "REMEDIATION: Tool result content must use type 'text'"
-        )
-        assert "text" in result["content"][0], (
-            "REMEDIATION: Tool result content block must have 'text' field"
-        )
+        assert (
+            result["content"][0]["type"] == "text"
+        ), "REMEDIATION: Tool result content must use type 'text'"
+        assert (
+            "text" in result["content"][0]
+        ), "REMEDIATION: Tool result content block must have 'text' field"
 
     def test_tool_error_includes_is_error_flag(self, server) -> None:
         """Tool-execution failures include isError: true in result."""
@@ -140,9 +140,9 @@ class TestToolsCall:
         }
         response = server.handle_request(request)
         result = response["result"]
-        assert result.get("isError") is True, (
-            "REMEDIATION: Tool errors must include isError: true in result"
-        )
+        assert (
+            result.get("isError") is True
+        ), "REMEDIATION: Tool errors must include isError: true in result"
 
     def test_invalid_tool_params_return_is_error(self, server) -> None:
         """Invalid tool params return result with isError: true, not JSON-RPC error."""
@@ -157,9 +157,9 @@ class TestToolsCall:
         }
         response = server.handle_request(request)
         # Should be a result with isError, not a JSON-RPC error
-        assert "result" in response, (
-            "REMEDIATION: Invalid tool params must use result with isError, not JSON-RPC error"
-        )
+        assert (
+            "result" in response
+        ), "REMEDIATION: Invalid tool params must use result with isError, not JSON-RPC error"
         assert response["result"].get("isError") is True
 
 
@@ -175,9 +175,9 @@ class TestNotifications:
         }
         # Notifications have no id — should return None (no response)
         response = server.handle_request(request)
-        assert response is None, (
-            "REMEDIATION: Notifications (no 'id') must return None (HTTP 202, no body)"
-        )
+        assert (
+            response is None
+        ), "REMEDIATION: Notifications (no 'id') must return None (HTTP 202, no body)"
 
 
 class TestUnknownMethod:
@@ -188,9 +188,9 @@ class TestUnknownMethod:
         request = {"jsonrpc": "2.0", "id": 8, "method": "nonexistent/method", "params": {}}
         response = server.handle_request(request)
         assert "error" in response, "REMEDIATION: Unknown methods must return JSON-RPC error object"
-        assert response["error"]["code"] == -32601, (
-            "REMEDIATION: Unknown method error code must be -32601"
-        )
+        assert (
+            response["error"]["code"] == -32601
+        ), "REMEDIATION: Unknown method error code must be -32601"
 
 
 class TestMalformedRequest:
@@ -201,9 +201,9 @@ class TestMalformedRequest:
         request = {"id": 9, "method": "initialize"}  # Missing "jsonrpc"
         response = server.handle_request(request)
         assert "error" in response, "REMEDIATION: Malformed requests must return JSON-RPC error"
-        assert response["error"]["code"] == -32600, (
-            "REMEDIATION: Malformed request error code must be -32600"
-        )
+        assert (
+            response["error"]["code"] == -32600
+        ), "REMEDIATION: Malformed request error code must be -32600"
 
     def test_missing_method_field(self, server) -> None:
         """Missing method returns JSON-RPC error -32600."""

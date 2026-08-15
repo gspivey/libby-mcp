@@ -43,12 +43,12 @@ class TestSearchURLConstruction:
             )
             client.search("lcpl", {"subject": ["24", "80"]})
             call_url = mock_get.call_args[0][0]
-            assert "subject=24" in call_url, (
-                "REMEDIATION: ThunderClient must support repeated subject params"
-            )
-            assert "subject=80" in call_url, (
-                "REMEDIATION: ThunderClient must support repeated subject params"
-            )
+            assert (
+                "subject=24" in call_url
+            ), "REMEDIATION: ThunderClient must support repeated subject params"
+            assert (
+                "subject=80" in call_url
+            ), "REMEDIATION: ThunderClient must support repeated subject params"
 
     def test_format_mapping_audiobook(self) -> None:
         """AC-1.3: format param passed directly to URL."""
@@ -61,9 +61,9 @@ class TestSearchURLConstruction:
             )
             client.search("lcpl", {"format": "audiobook-overdrive"})
             call_url = mock_get.call_args[0][0]
-            assert "format=audiobook-overdrive" in call_url, (
-                "REMEDIATION: ThunderClient must pass format param to URL"
-            )
+            assert (
+                "format=audiobook-overdrive" in call_url
+            ), "REMEDIATION: ThunderClient must pass format param to URL"
 
 
 class TestGetAvailabilityURL:
@@ -80,15 +80,15 @@ class TestGetAvailabilityURL:
             )
             client.get_availability("lcpl", ["12345", "67890"])
             call_url = mock_get.call_args[0][0]
-            assert "/v2/libraries/lcpl/media/availability" in call_url, (
-                "REMEDIATION: get_availability must use /v2/libraries/{slug}/media/availability"
-            )
-            assert "titleIds=12345" in call_url, (
-                "REMEDIATION: get_availability must include titleIds in query params"
-            )
-            assert "titleIds=67890" in call_url, (
-                "REMEDIATION: get_availability must include all title IDs"
-            )
+            assert (
+                "/v2/libraries/lcpl/media/availability" in call_url
+            ), "REMEDIATION: get_availability must use /v2/libraries/{slug}/media/availability"
+            assert (
+                "titleIds=12345" in call_url
+            ), "REMEDIATION: get_availability must include titleIds in query params"
+            assert (
+                "titleIds=67890" in call_url
+            ), "REMEDIATION: get_availability must include all title IDs"
 
 
 class TestTimeoutHandling:
@@ -102,9 +102,9 @@ class TestTimeoutHandling:
         with patch("httpx.Client.get") as mock_get:
             mock_get.side_effect = httpx.TimeoutException("Connection timed out")
             result = client.search("lcpl", {})
-            assert "error" in result, (
-                "REMEDIATION: ThunderClient.search() must return a dict with 'error' key on timeout"
-            )
+            assert (
+                "error" in result
+            ), "REMEDIATION: ThunderClient.search() must return a dict with 'error' key on timeout"
             assert "timeout" in result["error"].lower() or "unavailable" in result["error"].lower()
 
 
@@ -124,9 +124,9 @@ class TestHTTPErrorWrapping:
             )
             mock_get.return_value = mock_response
             result = client.search("lcpl", {})
-            assert "error" in result, (
-                "REMEDIATION: ThunderClient must return structured error on HTTP 5xx"
-            )
+            assert (
+                "error" in result
+            ), "REMEDIATION: ThunderClient must return structured error on HTTP 5xx"
 
 
 class TestUserAgent:
@@ -136,6 +136,6 @@ class TestUserAgent:
         """NFR-3.2: Requests include User-Agent: libby-mcp/1.0."""
         client = thunder_client.ThunderClient()
         # Check that the client has the correct headers configured
-        assert client._client.headers.get("user-agent") == "libby-mcp/1.0", (
-            "REMEDIATION: ThunderClient must set User-Agent to 'libby-mcp/1.0'"
-        )
+        assert (
+            client._client.headers.get("user-agent") == "libby-mcp/1.0"
+        ), "REMEDIATION: ThunderClient must set User-Agent to 'libby-mcp/1.0'"

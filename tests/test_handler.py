@@ -43,9 +43,9 @@ class TestAuthRejection:
             headers={},
         )
         result = handler_mod.lambda_handler(event, None)
-        assert result["statusCode"] == 401, (
-            "REMEDIATION: lambda_handler must return 401 for missing API key"
-        )
+        assert (
+            result["statusCode"] == 401
+        ), "REMEDIATION: lambda_handler must return 401 for missing API key"
 
     def test_invalid_auth_returns_401(self, _api_key_env) -> None:
         """AC-5.2: Invalid API key rejected with 401."""
@@ -64,9 +64,9 @@ class TestSuccessfulDispatch:
         """Valid key + valid MCP request returns 200."""
         event = _make_event({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
         result = handler_mod.lambda_handler(event, None)
-        assert result["statusCode"] == 200, (
-            "REMEDIATION: lambda_handler must return 200 for valid JSON-RPC requests"
-        )
+        assert (
+            result["statusCode"] == 200
+        ), "REMEDIATION: lambda_handler must return 200 for valid JSON-RPC requests"
         body = json.loads(result["body"])
         assert body["jsonrpc"] == "2.0"
         assert body["id"] == 1
@@ -76,9 +76,9 @@ class TestSuccessfulDispatch:
         """Notification (no id) returns 202 Accepted."""
         event = _make_event({"jsonrpc": "2.0", "method": "notifications/initialized", "params": {}})
         result = handler_mod.lambda_handler(event, None)
-        assert result["statusCode"] == 202, (
-            "REMEDIATION: Notifications (no 'id') must return HTTP 202 Accepted"
-        )
+        assert (
+            result["statusCode"] == 202
+        ), "REMEDIATION: Notifications (no 'id') must return HTTP 202 Accepted"
 
 
 class TestUnhandledErrors:
@@ -90,11 +90,11 @@ class TestUnhandledErrors:
         with patch("src.mcp_server.MCPServer.handle_request") as mock_handle:
             mock_handle.side_effect = RuntimeError("unexpected crash")
             result = handler_mod.lambda_handler(event, None)
-            assert result["statusCode"] == 500, (
-                "REMEDIATION: lambda_handler must return 500 on unhandled exceptions"
-            )
+            assert (
+                result["statusCode"] == 500
+            ), "REMEDIATION: lambda_handler must return 500 on unhandled exceptions"
             body = json.loads(result["body"])
             # Must not leak internal details
-            assert "unexpected crash" not in body.get("message", body.get("error", "")), (
-                "REMEDIATION: 500 response must not leak internal error details"
-            )
+            assert "unexpected crash" not in body.get(
+                "message", body.get("error", "")
+            ), "REMEDIATION: 500 response must not leak internal error details"
