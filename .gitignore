@@ -53,3 +53,7 @@ Desktop.ini
 *.log
 report.md
 junit*.xml
+
+# --- CDK ---
+cdk-outputs.json
+infra/cdk.out/
