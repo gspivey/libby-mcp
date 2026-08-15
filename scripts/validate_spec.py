@@ -54,7 +54,7 @@ REQUIRED_FILES = [
 # Tool name -> expected test file mapping.
 TOOL_TEST_MAP = {
     "search_titles": "tests/test_search_titles.py",
-    "get_availability": "tests/test_availability.py",
+    "get_availability": "tests/test_get_availability.py",
     "get_deep_link": "tests/test_deep_link.py",
 }
 
