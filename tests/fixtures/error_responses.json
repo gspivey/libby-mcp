@@ -1,0 +1,32 @@
+{
+  "timeout": {
+    "description": "Thunder API did not respond within 10s",
+    "error_type": "timeout",
+    "status_code": null,
+    "body": null
+  },
+  "server_error": {
+    "description": "Thunder API returned 500 Internal Server Error",
+    "error_type": "server_error",
+    "status_code": 500,
+    "body": {"message": "Internal server error"}
+  },
+  "bad_slug": {
+    "description": "Invalid library slug returns 200 with empty results (no explicit error)",
+    "error_type": "empty_library",
+    "status_code": 200,
+    "body": {
+      "items": [],
+      "totalItems": 0,
+      "totalItemsText": "0 titles",
+      "links": {"self": {"page": 1}, "last": {"page": 0}},
+      "facets": {}
+    }
+  },
+  "rate_limited": {
+    "description": "Thunder API returned 429 Too Many Requests",
+    "error_type": "rate_limited",
+    "status_code": 429,
+    "body": {"message": "Rate limit exceeded"}
+  }
+}
