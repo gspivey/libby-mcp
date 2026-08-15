@@ -97,7 +97,7 @@ Thunder API, validates response shapes. Branch protection for `development`. Thi
 makes the server deployable.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `10`, `11`, `12`
-- [ ] Complete · PR: —
+- [x] Complete · PR: #4
 
 ---
 
@@ -114,3 +114,8 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
 - [x] Complete · PR: #3
+
+### 3. AWS infrastructure (CDK) and integration tests
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `10`, `11`, `12`
+- [x] Complete · PR: #4
