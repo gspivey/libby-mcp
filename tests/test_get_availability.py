@@ -27,23 +27,23 @@ class TestRequiredParams:
     def test_missing_library_slug_returns_error(self, thunder_client: MagicMock) -> None:
         """library_slug is required."""
         result = availability.handle({"title_ids": ["12345"]}, thunder_client)
-        assert "error" in result, (
-            "REMEDIATION: get_availability must return error when library_slug is missing"
-        )
+        assert (
+            "error" in result
+        ), "REMEDIATION: get_availability must return error when library_slug is missing"
 
     def test_missing_title_ids_returns_error(self, thunder_client: MagicMock) -> None:
         """title_ids is required."""
         result = availability.handle({"library_slug": "lcpl"}, thunder_client)
-        assert "error" in result, (
-            "REMEDIATION: get_availability must return error when title_ids is missing"
-        )
+        assert (
+            "error" in result
+        ), "REMEDIATION: get_availability must return error when title_ids is missing"
 
     def test_empty_title_ids_returns_error(self, thunder_client: MagicMock) -> None:
         """Empty title_ids array is invalid."""
         result = availability.handle({"library_slug": "lcpl", "title_ids": []}, thunder_client)
-        assert "error" in result, (
-            "REMEDIATION: get_availability must return error for empty title_ids array"
-        )
+        assert (
+            "error" in result
+        ), "REMEDIATION: get_availability must return error for empty title_ids array"
 
 
 class TestTitleIdCoercion:
@@ -54,9 +54,10 @@ class TestTitleIdCoercion:
         availability.handle({"library_slug": "lcpl", "title_ids": [12345, 67890]}, thunder_client)
         call_args = thunder_client.get_availability.call_args[0]
         # Second arg should be list of strings
-        assert call_args[1] == ["12345", "67890"], (
-            "REMEDIATION: get_availability must coerce integer title_ids to strings"
-        )
+        assert call_args[1] == [
+            "12345",
+            "67890",
+        ], "REMEDIATION: get_availability must coerce integer title_ids to strings"
 
     def test_string_ids_passed_directly(self, thunder_client: MagicMock) -> None:
         """AC-2.2: String IDs pass through unchanged."""
@@ -98,13 +99,13 @@ class TestResponseMapping:
         assert "titles" in result
         first_title = result["titles"][0]
         assert "copies_owned" in first_title, "REMEDIATION: Each title must have copies_owned"
-        assert "copies_available" in first_title, (
-            "REMEDIATION: Each title must have copies_available"
-        )
+        assert (
+            "copies_available" in first_title
+        ), "REMEDIATION: Each title must have copies_available"
         assert "holds_count" in first_title, "REMEDIATION: Each title must have holds_count"
-        assert "estimated_wait_days" in first_title, (
-            "REMEDIATION: Each title must have estimated_wait_days"
-        )
+        assert (
+            "estimated_wait_days" in first_title
+        ), "REMEDIATION: Each title must have estimated_wait_days"
         assert "title_id" in first_title
 
     def test_returns_library_slug_in_response(self, thunder_client: MagicMock) -> None:
@@ -137,9 +138,9 @@ class TestNotFoundHandling:
         )
         titles = result["titles"]
         not_found = [t for t in titles if t.get("title_id") == "99999"]
-        assert len(not_found) == 1, (
-            "REMEDIATION: Must include an entry for titles not found in response"
-        )
+        assert (
+            len(not_found) == 1
+        ), "REMEDIATION: Must include an entry for titles not found in response"
         assert "error" in not_found[0], "REMEDIATION: Not-found titles must have an error indicator"
 
 
@@ -168,6 +169,6 @@ class TestNoRecommendations:
         result = availability.handle(
             {"library_slug": "lcpl", "title_ids": ["9876543", "1234567"]}, thunder_client
         )
-        assert len(result["titles"]) == 2, (
-            "REMEDIATION: All requested title IDs must be in the response"
-        )
+        assert (
+            len(result["titles"]) == 2
+        ), "REMEDIATION: All requested title IDs must be in the response"
