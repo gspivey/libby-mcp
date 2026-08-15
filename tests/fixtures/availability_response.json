@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "id": "9876543",
+      "availableCopies": 2,
+      "ownedCopies": 3,
+      "holdsCount": 0,
+      "estimatedWaitDays": 0,
+      "isAvailable": true
+    },
+    {
+      "id": "1234567",
+      "availableCopies": 0,
+      "ownedCopies": 5,
+      "holdsCount": 3,
+      "estimatedWaitDays": 14,
+      "isAvailable": false
+    }
+  ]
+}
