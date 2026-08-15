@@ -1,0 +1,19 @@
+{
+  "name": "libby-mcp-infra",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "cdk": "cdk"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "aws-cdk": "2.1136.0",
+    "tsx": "^4.23.0",
+    "typescript": "~5.7.0"
+  },
+  "dependencies": {
+    "@aws-cdk/aws-lambda-python-alpha": "^2.265.0-alpha.0",
+    "aws-cdk-lib": "^2.264.0",
+    "constructs": "^10.5.0"
+  }
+}

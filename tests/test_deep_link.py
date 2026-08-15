@@ -40,16 +40,16 @@ class TestRequiredParams:
     def test_missing_title_id_returns_error(self) -> None:
         """AC-3.4: Missing title_id returns clear validation error."""
         result = deep_link.handle({"library_slug": "lcpl"})
-        assert (
-            "error" in result
-        ), "REMEDIATION: get_deep_link must return error when title_id is missing"
+        assert "error" in result, (
+            "REMEDIATION: get_deep_link must return error when title_id is missing"
+        )
 
     def test_missing_library_slug_returns_error(self) -> None:
         """AC-3.4: Missing library_slug returns clear validation error."""
         result = deep_link.handle({"title_id": "12345"})
-        assert (
-            "error" in result
-        ), "REMEDIATION: get_deep_link must return error when library_slug is missing"
+        assert "error" in result, (
+            "REMEDIATION: get_deep_link must return error when library_slug is missing"
+        )
 
     def test_empty_params_returns_error(self) -> None:
         """AC-3.4: Empty params returns clear validation error."""

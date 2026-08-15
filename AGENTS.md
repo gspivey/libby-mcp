@@ -61,10 +61,13 @@ tests/                  # Unit and fixture tests
     availability_response.json
     error_responses.json
   integration/          # Live API tests (gated by RUN_INTEGRATION=1)
-    test_placeholder.py
-scripts/                # Validation and compliance tooling
+    test_live.py        # Thunder API response shape validation
+scripts/                # Validation, compliance, and deployment tooling
   validate_spec.py      # Spec alignment checker
   check_compliance.py   # Implementation compliance checker
+  deploy.sh             # Deploy CDK stack
+  destroy.sh            # Destroy CDK stack
+  get-api-key.sh        # Retrieve API key from Secrets Manager
 docs/
   design-docs/          # Spec copies (requirements.md, design.md, tasks.md)
   references/           # Domain reference material (Thunder API, MCP spec)
@@ -124,3 +127,37 @@ every push.
 See `prompts/agent-router.md` for the full RFC-2119 session mechanics:
 branch from `development`, one ROADMAP item per PR, tick checkboxes before
 merge, squash-merge to `development`.
+
+## Infrastructure (CDK)
+
+The AWS infrastructure is defined in `infra/` as a CDK TypeScript stack:
+
+```bash
+# Verify TypeScript compiles
+cd infra && npx tsc --noEmit
+
+# Synthesize CloudFormation (requires Docker for PythonFunction bundling)
+cd infra && npx cdk synth
+
+# Deploy (requires AWS credentials + Docker)
+./scripts/deploy.sh
+
+# Destroy all resources
+./scripts/destroy.sh
+
+# Retrieve MCP API key post-deploy
+./scripts/get-api-key.sh
+```
+
+Stack resources: Lambda (Python 3.12, ARM64, 256MB, 30s), API Gateway HTTP API
+(POST /mcp, 10 req/s burst / 5 req/s sustained), Secrets Manager (auto-generated
+API key), CloudWatch Logs (14-day retention).
+
+## Branch Protection (development)
+
+Required status checks before merge:
+- `lint` (ruff check + format)
+- `typecheck` (mypy strict)
+- `test` (pytest with 80% coverage threshold)
+
+No direct pushes to `main`. PRs target `development`.

@@ -25,16 +25,16 @@ class TestValidBearerToken:
     def test_valid_token_passes(self, _api_key_env) -> None:
         """AC-5.1: Valid Bearer token passes validation."""
         headers = {"authorization": "Bearer test-secret-key-12345"}
-        assert (
-            auth.validate_api_key(headers) is True
-        ), "REMEDIATION: validate_api_key must return True for valid Bearer token"
+        assert auth.validate_api_key(headers) is True, (
+            "REMEDIATION: validate_api_key must return True for valid Bearer token"
+        )
 
     def test_valid_token_mixed_case_header(self, _api_key_env) -> None:
         """AC-5.1: Header lookup is case-insensitive (API Gateway lowercases)."""
         headers = {"Authorization": "Bearer test-secret-key-12345"}
-        assert (
-            auth.validate_api_key(headers) is True
-        ), "REMEDIATION: validate_api_key must do case-insensitive header lookup"
+        assert auth.validate_api_key(headers) is True, (
+            "REMEDIATION: validate_api_key must do case-insensitive header lookup"
+        )
 
 
 class TestInvalidToken:
@@ -43,9 +43,9 @@ class TestInvalidToken:
     def test_wrong_token_fails(self, _api_key_env) -> None:
         """AC-5.2: Invalid token is rejected."""
         headers = {"authorization": "Bearer wrong-key"}
-        assert (
-            auth.validate_api_key(headers) is False
-        ), "REMEDIATION: validate_api_key must return False for invalid Bearer token"
+        assert auth.validate_api_key(headers) is False, (
+            "REMEDIATION: validate_api_key must return False for invalid Bearer token"
+        )
 
 
 class TestMissingHeader:
@@ -54,9 +54,9 @@ class TestMissingHeader:
     def test_missing_header_fails(self, _api_key_env) -> None:
         """AC-5.2: Missing Authorization header is rejected."""
         headers = {}
-        assert (
-            auth.validate_api_key(headers) is False
-        ), "REMEDIATION: validate_api_key must return False when Authorization header is missing"
+        assert auth.validate_api_key(headers) is False, (
+            "REMEDIATION: validate_api_key must return False when Authorization header is missing"
+        )
 
 
 class TestMalformedHeader:
@@ -65,23 +65,23 @@ class TestMalformedHeader:
     def test_no_bearer_prefix_fails(self, _api_key_env) -> None:
         """AC-5.2: Header without 'Bearer ' prefix fails."""
         headers = {"authorization": "test-secret-key-12345"}
-        assert (
-            auth.validate_api_key(headers) is False
-        ), "REMEDIATION: validate_api_key must require 'Bearer ' prefix"
+        assert auth.validate_api_key(headers) is False, (
+            "REMEDIATION: validate_api_key must require 'Bearer ' prefix"
+        )
 
     def test_basic_auth_fails(self, _api_key_env) -> None:
         """AC-5.2: Basic auth scheme fails."""
         headers = {"authorization": "Basic dXNlcjpwYXNz"}
-        assert (
-            auth.validate_api_key(headers) is False
-        ), "REMEDIATION: validate_api_key must reject non-Bearer auth schemes"
+        assert auth.validate_api_key(headers) is False, (
+            "REMEDIATION: validate_api_key must reject non-Bearer auth schemes"
+        )
 
     def test_empty_bearer_fails(self, _api_key_env) -> None:
         """AC-5.2: Empty Bearer value fails."""
         headers = {"authorization": "Bearer "}
-        assert (
-            auth.validate_api_key(headers) is False
-        ), "REMEDIATION: validate_api_key must reject empty Bearer value"
+        assert auth.validate_api_key(headers) is False, (
+            "REMEDIATION: validate_api_key must reject empty Bearer value"
+        )
 
 
 class TestCaseInsensitiveHeader:
@@ -95,6 +95,6 @@ class TestCaseInsensitiveHeader:
     def test_uppercase_authorization(self, _api_key_env) -> None:
         """Standard HTTP capitalization also works."""
         headers = {"AUTHORIZATION": "Bearer test-secret-key-12345"}
-        assert (
-            auth.validate_api_key(headers) is True
-        ), "REMEDIATION: validate_api_key must normalize header keys to lowercase"
+        assert auth.validate_api_key(headers) is True, (
+            "REMEDIATION: validate_api_key must normalize header keys to lowercase"
+        )
