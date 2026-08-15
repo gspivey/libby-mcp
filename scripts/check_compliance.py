@@ -14,7 +14,6 @@ Exit codes:
 from __future__ import annotations
 
 import importlib
-import json
 import sys
 from pathlib import Path
 
@@ -72,7 +71,7 @@ def check_auth() -> None:
         return
     from src import auth  # type: ignore[attr-defined]
 
-    expected_functions = ["validate_request", "extract_bearer_token"]
+    expected_functions = ["validate_api_key"]
     for fn in expected_functions:
         if not hasattr(auth, fn):
             record(
@@ -101,9 +100,9 @@ def check_mcp_server() -> None:
 def check_tools() -> None:
     """Validate tool modules exist and expose expected functions."""
     tools = {
-        "src.tools.search_titles": "handle_search_titles",
-        "src.tools.availability": "handle_get_availability",
-        "src.tools.deep_link": "handle_get_deep_link",
+        "src.tools.search_titles": "handle",
+        "src.tools.availability": "handle",
+        "src.tools.deep_link": "handle",
     }
     for module_name, expected_fn in tools.items():
         short = module_name.split(".")[-1]
@@ -125,12 +124,12 @@ def check_handler() -> None:
         return
     from src import handler  # type: ignore[attr-defined]
 
-    if not hasattr(handler, "handler"):
+    if not hasattr(handler, "lambda_handler"):
         record(
             "handler_entrypoint",
             "FAIL",
-            "src.handler missing handler() function",
-            "REMEDIATION: Define function handler(event, context) in src/handler.py",
+            "src.handler missing lambda_handler() function",
+            "REMEDIATION: Define function lambda_handler(event, context) in src/handler.py",
         )
 
 
