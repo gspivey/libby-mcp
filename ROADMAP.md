@@ -81,7 +81,7 @@ Calls `/v2/libraries/{slug}/media/availability?titleIds=...`. Returns raw counts
 MCPServer dispatch, response formatting. Module-level Thunder client for warm invocations.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
-- [ ] Complete · PR: —
+- [x] Complete · PR: #3
 
 ---
 
@@ -109,3 +109,8 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `0`, `1`, `1a`, `1b`
 - [x] Complete · PR: #2
+
+### 2. TDD tests and full implementation (Tasks 2-9)
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
+- [x] Complete · PR: #3
