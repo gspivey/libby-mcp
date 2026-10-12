@@ -108,7 +108,7 @@ full, then implement Tasks 1–6 (`.dockerignore` fix, requirements.txt update,
 `AuthMiddleware`, `handler.py` rewrite, delete `mcp_server.py`, update tests).
 
 - Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `1`, `2`, `3`, `4`, `5`, `6`
-- [ ] Complete · PR: --
+- [x] Complete · PR: #6
 
 ---
 
@@ -141,3 +141,8 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `10`, `11`, `12`
 - [x] Complete · PR: #4
+
+### 4. FastMCP migration: backend (PR A)
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `1`, `2`, `3`, `4`, `5`, `6`
+- [x] Complete · PR: #6

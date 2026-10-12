@@ -98,3 +98,98 @@ class TestCaseInsensitiveHeader:
         assert (
             auth.validate_api_key(headers) is True
         ), "REMEDIATION: validate_api_key must normalize header keys to lowercase"
+
+
+from src.auth import AuthMiddleware  # noqa: E402
+
+
+@pytest.fixture
+def set_key(monkeypatch):
+    """Non-autouse: apply only where needed."""
+    monkeypatch.setenv("LIBBY_MCP_API_KEY", "secret")
+
+
+def _http_scope(auth_header: str | None = None, method: str = "POST") -> dict:
+    headers: list = [
+        [b"content-type", b"application/json"],
+    ]
+    if auth_header:
+        headers.append([b"authorization", auth_header.encode()])
+    return {"type": "http", "headers": headers, "method": method}
+
+
+async def test_lifespan_passes_through():
+    calls: list[str] = []
+
+    async def fake_app(scope, receive, send):
+        calls.append("called")
+
+    middleware = AuthMiddleware(fake_app)
+    await middleware({"type": "lifespan"}, None, None)
+    assert calls == ["called"]
+
+
+async def test_get_returns_405(set_key):
+    calls: list[str] = []
+
+    async def fake_app(scope, receive, send):
+        calls.append("called")
+
+    middleware = AuthMiddleware(fake_app)
+    responses: list[dict] = []
+
+    async def fake_send(msg):
+        responses.append(msg)
+
+    await middleware(_http_scope(method="GET"), None, fake_send)
+    assert responses[0]["status"] == 405
+    assert not calls
+
+
+async def test_middleware_missing_header_returns_401(set_key):
+    calls: list[str] = []
+
+    async def fake_app(scope, receive, send):
+        calls.append("called")
+
+    middleware = AuthMiddleware(fake_app)
+    responses: list[dict] = []
+
+    async def fake_send(msg):
+        responses.append(msg)
+
+    await middleware(_http_scope(None), None, fake_send)
+    assert responses[0]["status"] == 401
+    assert not calls
+
+
+async def test_middleware_invalid_token_returns_401(set_key):
+    calls: list[str] = []
+
+    async def fake_app(scope, receive, send):
+        calls.append("called")
+
+    middleware = AuthMiddleware(fake_app)
+    responses: list[dict] = []
+
+    async def fake_send(msg):
+        responses.append(msg)
+
+    await middleware(_http_scope("Bearer wrong"), None, fake_send)
+    assert responses[0]["status"] == 401
+    assert not calls
+
+
+async def test_middleware_valid_token_passes_through(set_key):
+    calls: list[str] = []
+
+    async def fake_app(scope, receive, send):
+        calls.append("called")
+
+    middleware = AuthMiddleware(fake_app)
+
+    async def noop_send(msg):
+        pass
+
+    await middleware(_http_scope("Bearer secret"), None, noop_send)
+    assert calls == ["called"]

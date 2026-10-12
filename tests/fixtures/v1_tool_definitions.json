@@ -1,0 +1,141 @@
+[
+  {
+    "name": "search_titles",
+    "description": "Search a library's OverDrive catalog via the Thunder API. Returns titles with availability info, deep links, and copy/hold counts. Also returns facets (including valid subject IDs for the library).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "library_slug": {
+          "type": "string",
+          "description": "Library identifier (e.g., lcpl, fairfaxcounty, nypl)"
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "description": "Subject IDs to filter by"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "audiobook",
+            "ebook"
+          ],
+          "description": "Media format filter"
+        },
+        "available": {
+          "type": "boolean",
+          "description": "Only show currently borrowable titles"
+        },
+        "creator": {
+          "type": "string",
+          "description": "Author or narrator name search"
+        },
+        "bisac": {
+          "type": "string",
+          "description": "BISAC category code to filter by"
+        },
+        "series_id": {
+          "type": "integer",
+          "description": "Filter to a specific series by ID"
+        },
+        "under_hours": {
+          "type": "number",
+          "description": "Maximum audiobook length in hours (client-side filter)"
+        },
+        "per_page": {
+          "type": "integer",
+          "description": "Results per page (max 100)"
+        },
+        "page": {
+          "type": "integer",
+          "description": "Page number for pagination"
+        },
+        "maturity_level": {
+          "type": "string",
+          "enum": [
+            "general",
+            "juvenile",
+            "youngadult",
+            "adultonly"
+          ],
+          "description": "Content maturity filter"
+        },
+        "sort_by": {
+          "type": "string",
+          "description": "Sort order"
+        },
+        "query": {
+          "type": "string",
+          "description": "Full-text search on title+subtitle+description"
+        }
+      },
+      "required": [
+        "library_slug"
+      ]
+    }
+  },
+  {
+    "name": "get_availability",
+    "description": "Get raw availability data for specific titles at a library. Returns copies owned, copies available, holds count, and estimated wait days.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "library_slug": {
+          "type": "string",
+          "description": "Library identifier"
+        },
+        "title_ids": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "description": "Array of OverDrive title IDs to check"
+        }
+      },
+      "required": [
+        "library_slug",
+        "title_ids"
+      ]
+    }
+  },
+  {
+    "name": "get_deep_link",
+    "description": "Generate a direct OverDrive link for a specific title. Format: https://{slug}.overdrive.com/media/{id}",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "title_id": {
+          "type": [
+            "string",
+            "integer"
+          ],
+          "description": "OverDrive numeric title ID"
+        },
+        "library_slug": {
+          "type": "string",
+          "description": "Library slug for the link context"
+        }
+      },
+      "required": [
+        "title_id",
+        "library_slug"
+      ]
+    }
+  }
+]
