@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import importlib
 import sys
-from pathlib import Path
 
 RESULTS: list[dict] = []
 
@@ -71,30 +70,15 @@ def check_auth() -> None:
         return
     from src import auth  # type: ignore[attr-defined]
 
-    expected_functions = ["validate_api_key"]
+    expected_functions = ["validate_api_key", "AuthMiddleware"]
     for fn in expected_functions:
         if not hasattr(auth, fn):
             record(
                 f"auth_{fn}",
                 "FAIL",
-                f"src.auth missing function: {fn}",
-                f"REMEDIATION: Define function {fn} in src/auth.py",
+                f"src.auth missing: {fn}",
+                f"REMEDIATION: Define {fn} in src/auth.py",
             )
-
-
-def check_mcp_server() -> None:
-    """Validate MCP server module structure."""
-    if not check_module_exists("src.mcp_server", "mcp_server"):
-        return
-    from src import mcp_server  # type: ignore[attr-defined]
-
-    if not hasattr(mcp_server, "MCPServer"):
-        record(
-            "mcp_server_class",
-            "FAIL",
-            "src.mcp_server missing MCPServer class",
-            "REMEDIATION: Define class MCPServer in src/mcp_server.py",
-        )
 
 
 def check_tools() -> None:
@@ -119,7 +103,13 @@ def check_tools() -> None:
 
 
 def check_handler() -> None:
-    """Validate Lambda handler module."""
+    """Validate Lambda handler module (FastMCP-based).
+
+    After the FastMCP migration, src/handler.py exposes:
+    - lambda_handler(event, context): Lambda entry point
+    - mcp: the FastMCP application instance
+    - search_titles / get_availability / get_deep_link: registered tool fns
+    """
     if not check_module_exists("src.handler", "handler"):
         return
     from src import handler  # type: ignore[attr-defined]
@@ -132,11 +122,27 @@ def check_handler() -> None:
             "REMEDIATION: Define function lambda_handler(event, context) in src/handler.py",
         )
 
+    if not hasattr(handler, "mcp"):
+        record(
+            "handler_fastmcp_app",
+            "FAIL",
+            "src.handler missing FastMCP app instance 'mcp'",
+            'REMEDIATION: Define mcp = FastMCP("libby-mcp") in src/handler.py',
+        )
+
+    for tool_fn in ("search_titles", "get_availability", "get_deep_link"):
+        if not hasattr(handler, tool_fn):
+            record(
+                f"handler_tool_{tool_fn}",
+                "FAIL",
+                f"src.handler missing @mcp.tool function: {tool_fn}",
+                f"REMEDIATION: Register {tool_fn} with @mcp.tool() in src/handler.py",
+            )
+
 
 def main() -> int:
     check_thunder_client()
     check_auth()
-    check_mcp_server()
     check_tools()
     check_handler()
 
