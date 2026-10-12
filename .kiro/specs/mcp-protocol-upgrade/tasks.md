@@ -682,6 +682,13 @@ Then add Claude.ai connector at Settings → Integrations:
 - Transport: Streamable HTTP
 - Request headers: `authorization: Bearer <key>`
 
+**Status:** The CDK `GET /mcp` route (AC-4.3.1) is implemented and merged in PR #7,
+verified by `tsc --noEmit` and a `Template.fromStack` route-tree assertion
+(`RouteKey`s == `["GET /mcp", "POST /mcp"]`) with asset bundling disabled. The live
+`cdk deploy` and the post-deploy 405/200 curl checks (AC-4.3.2, AC-4.3.3) plus the
+Claude.ai connector step are **pending an operator** — they require AWS credentials and
+Docker (`PythonFunction` bundling), which the unattended agent did not have.
+
 ---
 
 ## ROADMAP Grouping

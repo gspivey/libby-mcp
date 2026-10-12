@@ -68,6 +68,16 @@ export class LibbyMcpStack extends cdk.Stack {
       integration: lambdaIntegration,
     });
 
+    // GET /mcp route — routes GET requests to the Lambda instead of returning a
+    // 404 from API Gateway. The AuthMiddleware rejects all non-POST methods with
+    // 405 Method Not Allowed before the auth check runs, so both authenticated
+    // and unauthenticated GET requests receive a spec-compliant 405 (FR-4.3).
+    httpApi.addRoutes({
+      path: "/mcp",
+      methods: [apigatewayv2.HttpMethod.GET],
+      integration: lambdaIntegration,
+    });
+
     // Stack outputs
     new cdk.CfnOutput(this, "ApiEndpoint", {
       value: `${httpApi.apiEndpoint}/mcp`,

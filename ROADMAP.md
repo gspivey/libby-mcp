@@ -118,8 +118,14 @@ Read `.kiro/specs/mcp-protocol-upgrade/requirements.md`, `design.md`, and `tasks
 full, then implement Task 7 (add `GET /mcp` route to CDK stack, deploy, post-deploy
 verification). Depends on item 4 (backend migration merged).
 
+The `GET /mcp` CDK route (AC-4.3.1) is implemented and merged in PR #7. The live
+`cdk deploy` and post-deploy 405/200 verification (AC-4.3.2, AC-4.3.3) remain a
+**pending operator step** — they require AWS credentials (SSO) and Docker (for
+`PythonFunction` bundling), neither available to the unattended agent. An operator
+must run `./scripts/deploy.sh` and the Task 7 curl checks, then close out this item.
+
 - Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `7`
-- [ ] Complete · PR: --
+- [x] Complete (code; AC-4.3.1) · PR: #7 — deploy + AC-4.3.2/4.3.3 pending operator
 
 ---
 
