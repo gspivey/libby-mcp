@@ -101,6 +101,28 @@ makes the server deployable.
 
 ---
 
+### 4. FastMCP migration: backend (PR A)
+
+Read `.kiro/specs/mcp-protocol-upgrade/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement Tasks 1–6 (`.dockerignore` fix, requirements.txt update,
+`AuthMiddleware`, `handler.py` rewrite, delete `mcp_server.py`, update tests).
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `1`, `2`, `3`, `4`, `5`, `6`
+- [ ] Complete · PR: --
+
+---
+
+### 5. FastMCP migration: CDK GET route + deploy (PR B)
+
+Read `.kiro/specs/mcp-protocol-upgrade/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement Task 7 (add `GET /mcp` route to CDK stack, deploy, post-deploy
+verification). Depends on item 4 (backend migration merged).
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `7`
+- [ ] Complete · PR: --
+
+---
+
 ## Completed
 
 Items move here after they merge to `development`.
