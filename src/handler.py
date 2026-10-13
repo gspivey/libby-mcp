@@ -24,7 +24,7 @@ from src.tools import search_titles as search_titles_impl
 # Module-level -- reused across warm Lambda invocations
 _thunder_client = ThunderClient()
 
-mcp = FastMCP("libby-mcp")
+mcp = FastMCP("libby-mcp", stateless_http=True, json_response=True)
 
 
 @mcp.tool(
@@ -133,12 +133,7 @@ def _build_app() -> AuthMiddleware:
     Building fresh here ensures each invocation (including warm ones)
     gets a clean lifecycle without the second-invocation failure.
     """
-    fastmcp_app = mcp.http_app(
-        path="/mcp",
-        transport="http",
-        stateless_http=True,
-        json_response=True,
-    )
+    fastmcp_app = mcp.streamable_http_app()
     return AuthMiddleware(fastmcp_app)
 
 
