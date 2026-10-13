@@ -41,7 +41,7 @@ async def client():
     async with LifespanManager(app) as manager:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=manager.app),
-            base_url="http://localhost",
+            base_url="http://testserver",
         ) as c:
             yield c
 
@@ -209,12 +209,12 @@ def _make_apigw_v2_event(body: dict, token: str = VALID_TOKEN) -> dict:
             "authorization": f"Bearer {token}",
             "content-type": "application/json",
             "accept": "application/json, text/event-stream",
-            "host": "localhost",
+            "host": "testserver",
         },
         "requestContext": {
             "accountId": "123456789012",
             "apiId": "testapi",
-            "domainName": "localhost",
+            "domainName": "testserver",
             "requestId": "test-request-id",
             "routeKey": "POST /mcp",
             "stage": "$default",

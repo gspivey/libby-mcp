@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal
 from mangum import Mangum
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
+from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from src.auth import AuthMiddleware
@@ -34,7 +35,17 @@ def _make_mcp() -> FastMCP:
     instance. Reusing a module-level instance across invocations (or across
     test cases) raises RuntimeError on the second call.
     """
-    mcp: FastMCP[None] = FastMCP("libby-mcp", stateless_http=True, json_response=True)
+    mcp: FastMCP[None] = FastMCP(
+        "libby-mcp",
+        stateless_http=True,
+        json_response=True,
+        # DNS rebinding protection is not needed here: the ASGI app is invoked
+        # directly by Mangum (Lambda) or the test client, never bound to a real
+        # socket where DNS rebinding is a threat. Disabling it avoids the
+        # 421 Misdirected Request the middleware returns when the Host header
+        # does not match the allowed_hosts list.
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
+    )
 
     @mcp.tool(
         description=(
