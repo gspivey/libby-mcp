@@ -56,12 +56,8 @@ def _make_mcp() -> FastMCP:
         available: Annotated[
             bool | None, Field(description="Only show currently borrowable titles")
         ] = None,
-        creator: Annotated[
-            str | None, Field(description="Author or narrator name search")
-        ] = None,
-        bisac: Annotated[
-            str | None, Field(description="BISAC category code to filter by")
-        ] = None,
+        creator: Annotated[str | None, Field(description="Author or narrator name search")] = None,
+        bisac: Annotated[str | None, Field(description="BISAC category code to filter by")] = None,
         series_id: Annotated[
             int | None, Field(description="Filter to a specific series by ID")
         ] = None,
@@ -69,9 +65,7 @@ def _make_mcp() -> FastMCP:
             float | None,
             Field(description="Maximum audiobook length in hours (client-side filter)"),
         ] = None,
-        per_page: Annotated[
-            int | None, Field(description="Results per page (max 100)")
-        ] = None,
+        per_page: Annotated[int | None, Field(description="Results per page (max 100)")] = None,
         page: Annotated[int | None, Field(description="Page number for pagination")] = None,
         maturity_level: Annotated[
             Literal["general", "juvenile", "youngadult", "adultonly"] | None,
@@ -133,9 +127,7 @@ def _make_mcp() -> FastMCP:
     )
     def get_deep_link(
         title_id: Annotated[str | int, Field(description="OverDrive numeric title ID")],
-        library_slug: Annotated[
-            str, Field(description="Library slug for the link context")
-        ],
+        library_slug: Annotated[str, Field(description="Library slug for the link context")],
     ) -> dict[str, Any]:
         result = deep_link_impl.handle({"title_id": title_id, "library_slug": library_slug})
         if "error" in result:
