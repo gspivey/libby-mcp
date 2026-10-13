@@ -41,7 +41,7 @@ searches. Creates the AGENTS.md navigation document and Makefile with standard t
 This is the foundation — all implementation PRs land on top of it.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `0`, `1`, `1a`, `1b`
-- [ ] Complete · PR: —
+- [x] Complete · PR: #2
 
 ---
 
@@ -81,7 +81,7 @@ Calls `/v2/libraries/{slug}/media/availability?titleIds=...`. Returns raw counts
 MCPServer dispatch, response formatting. Module-level Thunder client for warm invocations.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
-- [ ] Complete · PR: —
+- [x] Complete · PR: #3
 
 ---
 
@@ -97,7 +97,35 @@ Thunder API, validates response shapes. Branch protection for `development`. Thi
 makes the server deployable.
 
 - Spec: `.kiro/specs/libby-mcp/` · tasks `10`, `11`, `12`
-- [ ] Complete · PR: —
+- [x] Complete · PR: #4
+
+---
+
+### 4. FastMCP migration: backend (PR A)
+
+Read `.kiro/specs/mcp-protocol-upgrade/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement Tasks 1–6 (`.dockerignore` fix, requirements.txt update,
+`AuthMiddleware`, `handler.py` rewrite, delete `mcp_server.py`, update tests).
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `1`, `2`, `3`, `4`, `5`, `6`
+- [x] Complete · PR: #6
+
+---
+
+### 5. FastMCP migration: CDK GET route + deploy (PR B)
+
+Read `.kiro/specs/mcp-protocol-upgrade/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement Task 7 (add `GET /mcp` route to CDK stack, deploy, post-deploy
+verification). Depends on item 4 (backend migration merged).
+
+The `GET /mcp` CDK route (AC-4.3.1) is implemented and merged in PR #7. The live
+`cdk deploy` and post-deploy 405/200 verification (AC-4.3.2, AC-4.3.3) remain a
+**pending operator step** — they require AWS credentials (SSO) and Docker (for
+`PythonFunction` bundling), neither available to the unattended agent. An operator
+must run `./scripts/deploy.sh` and the Task 7 curl checks, then close out this item.
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `7`
+- [x] Complete (code; AC-4.3.1) · PR: #7 — deploy + AC-4.3.2/4.3.3 pending operator
 
 ---
 
@@ -105,4 +133,22 @@ makes the server deployable.
 
 Items move here after they merge to `development`.
 
-*(none yet)*
+### 1. Project scaffolding, CI, and test harness
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `0`, `1`, `1a`, `1b`
+- [x] Complete · PR: #2
+
+### 2. TDD tests and full implementation (Tasks 2-9)
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`
+- [x] Complete · PR: #3
+
+### 3. AWS infrastructure (CDK) and integration tests
+
+- Spec: `.kiro/specs/libby-mcp/` · tasks `10`, `11`, `12`
+- [x] Complete · PR: #4
+
+### 4. FastMCP migration: backend (PR A)
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `1`, `2`, `3`, `4`, `5`, `6`
+- [x] Complete · PR: #6

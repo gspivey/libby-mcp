@@ -1,0 +1,68 @@
+{
+  "items": [
+    {
+      "id": "9876543",
+      "title": "Dungeon Crawler Carl",
+      "subtitle": "A LitRPG/Gamelit Adventure",
+      "firstCreatorName": "Matt Dinniman",
+      "reserveId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "isAvailable": true,
+      "availableCopies": 2,
+      "ownedCopies": 3,
+      "holdsCount": 0,
+      "estimatedWaitDays": 0,
+      "publisher": {"name": "Podium Audio"},
+      "bisacCodes": ["FIC129000", "FIC009000"],
+      "formats": [
+        {"id": "audiobook-overdrive", "duration": "12:34:56"}
+      ]
+    },
+    {
+      "id": "1234567",
+      "title": "The Name of the Wind",
+      "subtitle": "The Kingkiller Chronicle: Day One",
+      "firstCreatorName": "Patrick Rothfuss",
+      "reserveId": "f1e2d3c4-b5a6-7890-1234-567890abcdef",
+      "isAvailable": false,
+      "availableCopies": 0,
+      "ownedCopies": 5,
+      "holdsCount": 3,
+      "estimatedWaitDays": 14,
+      "publisher": {"name": "DAW Books"},
+      "bisacCodes": ["FIC009020", "FIC009000"],
+      "formats": [
+        {"id": "audiobook-overdrive", "duration": "27:55:12"}
+      ]
+    },
+    {
+      "id": "5555555",
+      "title": "Project Hail Mary",
+      "subtitle": null,
+      "firstCreatorName": "Andy Weir",
+      "reserveId": "11223344-5566-7788-99aa-bbccddeeff00",
+      "isAvailable": true,
+      "availableCopies": 1,
+      "ownedCopies": 2,
+      "holdsCount": 1,
+      "estimatedWaitDays": 7,
+      "publisher": {"name": "Audible Studios"},
+      "bisacCodes": ["FIC028000", "FIC028010"],
+      "formats": [
+        {"id": "ebook-overdrive", "duration": ""}
+      ]
+    }
+  ],
+  "totalItems": 843,
+  "totalItemsText": "843 titles",
+  "links": {
+    "self": {"page": 1},
+    "last": {"page": 9}
+  },
+  "facets": {
+    "subjects": [
+      {"id": 24, "name": "Fantasy", "count": 150},
+      {"id": 80, "name": "Science Fiction", "count": 95},
+      {"id": 26, "name": "Fiction", "count": 300}
+    ]
+  }
+}

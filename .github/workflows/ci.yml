@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development, 'agent/**']
+  pull_request:
+    branches: [development]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check src/ tests/
+      - run: ruff format --check src/ tests/
+
+  typecheck:
+    name: Type Check
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e .
+      - run: mypy src/
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: typecheck
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e .
+      - run: pytest tests/ --ignore=tests/integration -v --tb=short --cov=src --cov-report=term-missing --cov-fail-under=80
+
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e .
+      - run: pytest tests/integration/ -v -m integration
+        env:
+          RUN_INTEGRATION: "1"
+
+  comment:
+    name: PR Comment
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'pull_request'
+    needs: [lint, typecheck, test]
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const results = {
+              lint: '${{ needs.lint.result }}',
+              typecheck: '${{ needs.typecheck.result }}',
+              test: '${{ needs.test.result }}'
+            };
+
+            const statusIcon = (s) => s === 'success' ? 'pass' : s === 'failure' ? 'FAIL' : s;
+            const overall = Object.values(results).some(r => r === 'failure') ? 'failed' : 'passed';
+
+            const body = [
+              '## CI Report',
+              '',
+              `Result: **${overall}**`,
+              '',
+              `Commit: \`${context.sha.slice(0, 8)}\``,
+              '',
+              '| Check | Status |',
+              '| --- | --- |',
+              `| Lint (ruff) | ${statusIcon(results.lint)} |`,
+              `| Type Check (mypy) | ${statusIcon(results.typecheck)} |`,
+              `| Test (pytest) | ${statusIcon(results.test)} |`,
+              '',
+              `[View run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
