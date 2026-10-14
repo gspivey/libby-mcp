@@ -12,9 +12,16 @@
       "holdsCount": 0,
       "estimatedWaitDays": 0,
       "publisher": {"name": "Podium Audio"},
+      "edition": "Unabridged",
+      "series": "Dungeon Crawler Carl",
+      "detailedSeries": {"seriesId": 42, "seriesName": "Dungeon Crawler Carl", "readingOrder": "1"},
+      "creators": [
+        {"id": 1, "name": "Matt Dinniman", "role": "Author"},
+        {"id": 2, "name": "Jeff Hays", "role": "Narrator"}
+      ],
       "bisacCodes": ["FIC129000", "FIC009000"],
       "formats": [
-        {"id": "audiobook-overdrive", "duration": "12:34:56"}
+        {"id": "audiobook-overdrive", "duration": "12:34:56", "isAbridged": false}
       ]
     },
     {
@@ -29,9 +36,17 @@
       "holdsCount": 3,
       "estimatedWaitDays": 14,
       "publisher": {"name": "DAW Books"},
+      "edition": "Abridged",
+      "series": "The Kingkiller Chronicle",
+      "detailedSeries": {"seriesId": 7, "seriesName": "The Kingkiller Chronicle", "readingOrder": "1.5"},
+      "creators": [
+        {"id": 3, "name": "Patrick Rothfuss", "role": "Author"},
+        {"id": 4, "name": "Nick Podehl", "role": "Narrator"},
+        {"id": 5, "name": "Rupert Degas", "role": "Narrator"}
+      ],
       "bisacCodes": ["FIC009020", "FIC009000"],
       "formats": [
-        {"id": "audiobook-overdrive", "duration": "27:55:12"}
+        {"id": "audiobook-overdrive", "duration": "27:55:12", "isAbridged": true}
       ]
     },
     {
@@ -49,6 +64,27 @@
       "bisacCodes": ["FIC028000", "FIC028010"],
       "formats": [
         {"id": "ebook-overdrive", "duration": ""}
+      ]
+    },
+    {
+      "id": "7777777",
+      "title": "Malformed Metadata Edge Case",
+      "subtitle": null,
+      "firstCreatorName": "Jane Doe",
+      "reserveId": "99887766-5544-3322-1100-aabbccddeeff",
+      "isAvailable": true,
+      "availableCopies": 1,
+      "ownedCopies": 1,
+      "holdsCount": 0,
+      "estimatedWaitDays": 0,
+      "publisher": "Bare String Publisher",
+      "edition": null,
+      "series": "Bare Series String",
+      "detailedSeries": {"seriesId": 9, "seriesName": "Bare Series String", "readingOrder": "not-a-number"},
+      "creators": ["Just A String", {"id": 6, "name": "Real Narrator", "role": "Narrator"}],
+      "bisacCodes": ["FIC000000"],
+      "formats": [
+        {"id": "audiobook-overdrive", "duration": "03:00:00"}
       ]
     }
   ],

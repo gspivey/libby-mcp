@@ -155,7 +155,7 @@ Read `.kiro/specs/libby-mcp-v2/requirements.md`, `design.md`, and `tasks.md` in 
 then implement tasks `C1`, `C2`, `C3`. Depends on item 7 (PR-B merged).
 
 - Spec: `.kiro/specs/libby-mcp-v2/` · tasks `C1`, `C2`, `C3`
-- [ ] Complete · PR: --
+- [x] Complete · PR: #17
 
 ---
 
@@ -197,3 +197,8 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp-v2/` · tasks `B1`, `B2`, `B3`
 - [x] Complete · PR: #16
+
+### 8. libby-mcp v2 — Group C: Content enrichment (PR-C)
+
+- Spec: `.kiro/specs/libby-mcp-v2/` · tasks `C1`, `C2`, `C3`
+- [x] Complete · PR: #17
