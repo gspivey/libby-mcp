@@ -351,6 +351,79 @@ def _holds_per_copy(holds: int, owned: int) -> float | None:
     return 0.0 if not holds else None
 
 
+def _to_float(value: Any) -> float | None:
+    """Coerce a numeric value (or numeric string) to float, else ``None`` (AC-C1.4).
+
+    Used for ``series_position`` from the Thunder ``readingOrder`` field, which is
+    a string in the API response (e.g. ``"1"`` or ``"1.5"``). Missing, empty, or
+    non-numeric values yield ``None``.
+    """
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return None
+
+
+def _extract_series(item: dict[str, Any]) -> tuple[str | None, float | None]:
+    """Extract ``(series_name, series_position)`` from a Thunder item (FR-C1).
+
+    Field paths verified against ``docs/references/thunder_openapi_v1.json``
+    (``MediaDetailsResponse``): the item carries a bare-string ``series`` (the
+    series name) plus a ``detailedSeries`` object with ``seriesName`` and
+    ``readingOrder``. The spec originally assumed a nested ``series`` object with
+    ``name``/``readingOrder``; this reader tolerates both shapes so it is robust
+    to either the real API or the spec's assumed shape (AC-C1.1–C1.4).
+
+    When there is no series information both values are ``None`` (keys still
+    present on the title, set by the caller).
+    """
+    detailed = item.get("detailedSeries")
+    if not isinstance(detailed, dict):
+        detailed = {}
+
+    series = item.get("series")
+    # series name: prefer detailedSeries.seriesName; fall back to a bare-string
+    # `series`, or a nested `series.name` object (spec's original assumption).
+    series_name = detailed.get("seriesName")
+    if series_name is None:
+        if isinstance(series, str):
+            series_name = series or None
+        elif isinstance(series, dict):
+            series_name = series.get("name")
+
+    # reading order: detailedSeries.readingOrder, else a nested series.readingOrder.
+    raw_order = detailed.get("readingOrder")
+    if raw_order is None and isinstance(series, dict):
+        raw_order = series.get("readingOrder")
+    series_position = _to_float(raw_order)
+
+    return series_name, series_position
+
+
+def _extract_narrators(item: dict[str, Any]) -> list[str]:
+    """Extract narrator names from the Thunder ``creators`` array (FR-C2).
+
+    Verified against the OpenAPI reference (``CreatorResponse`` has ``name`` and
+    ``role``): there is no top-level ``narrators`` array; narrators are
+    ``creators[]`` entries whose ``role`` is ``"Narrator"`` (case-insensitive).
+    Entries that are not ``{name, role}`` objects (e.g. bare strings) are
+    skipped, so a malformed ``creators`` list never crashes (AC-C2.1/C2.4).
+    """
+    creators = item.get("creators") or []
+    if not isinstance(creators, list):
+        return []
+    return [
+        c["name"]
+        for c in creators
+        if isinstance(c, dict)
+        and isinstance(c.get("role"), str)
+        and c["role"].strip().lower() == "narrator"
+        and c.get("name")
+    ]
+
+
 def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] | None:
     """Normalize a Thunder API item into the Title Object schema.
 
@@ -373,9 +446,10 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] |
 
     # Determine format from formats array
     formats = item.get("formats", [])
+    primary_fmt = formats[0] if formats and isinstance(formats[0], dict) else {}
     format_value = ""
-    if formats:
-        fmt_id = formats[0].get("id", "")
+    if primary_fmt:
+        fmt_id = primary_fmt.get("id", "")
         if "audiobook" in fmt_id:
             format_value = "audiobook"
         elif "ebook" in fmt_id:
@@ -385,6 +459,26 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] |
 
     # Get hours for audiobooks
     hours = _get_hours(item)
+
+    # Content enrichment (Group C). Field paths verified against the OpenAPI
+    # reference; see _extract_series / _extract_narrators for the shape notes.
+    series_name, series_position = _extract_series(item)
+    narrator = _extract_narrators(item)
+
+    # publisher: IdNamePair -> name string; None when absent or a bare string
+    # (AC-C2.2/C2.4).
+    pub = item.get("publisher")
+    publisher = pub.get("name") if isinstance(pub, dict) else None
+
+    # edition: plain string or None (AC-C2.3).
+    raw_edition = item.get("edition")
+    edition = raw_edition if isinstance(raw_edition, str) else None
+
+    # is_abridged: isAbridged on the primary format entry — the same entry used
+    # for format/duration detection (AC-C3.3). The field is not present in the
+    # OpenAPI reference, so it resolves to None (unknown) against the live API,
+    # which is exactly the AC-C3.2/C3.4 default (never coerced to False).
+    is_abridged = primary_fmt.get("isAbridged")
 
     # Folded availability signals (FR-B2): derived from the search item itself,
     # no extra per-title availability call (AC-B2.4 / NFR-2.3).
@@ -407,6 +501,12 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] |
         "holds_per_copy": holds_per_copy,
         "estimated_wait_days": estimated_wait_days,
         "hours": hours,
+        "is_abridged": is_abridged,
         "bisac_codes": item.get("bisacCodes", []),
+        "series_name": series_name,
+        "series_position": series_position,
+        "narrator": narrator,
+        "publisher": publisher,
+        "edition": edition,
         "link": f"https://{library_slug}.overdrive.com/media/{item_id}",
     }

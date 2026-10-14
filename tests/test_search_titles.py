@@ -546,3 +546,234 @@ class TestMultiLibraryFanOut:
         assert "error" in blocks["badslug"]
         assert "badslug" in blocks["badslug"]["error"]
         assert "titles" not in blocks["badslug"]
+
+
+# ---------------------------------------------------------------------------
+# Group C — Content enrichment (FR-C1, FR-C2, FR-C3)
+#
+# Field paths were verified against docs/references/thunder_openapi_v1.json
+# (MediaDetailsResponse). The reference differs from the spec's original
+# assumptions, so _normalize_item reads the real shapes while remaining
+# tolerant of the spec's documented shapes:
+#   - series name: bare `series` string, or `detailedSeries.seriesName`.
+#   - series position: `detailedSeries.readingOrder` (string, coerced to float);
+#     also tolerant of `series.readingOrder` when `series` is a dict.
+#   - narrator: `creators[]` entries whose `role == "Narrator"` (`.name`).
+#   - publisher: `publisher.name` (IdNamePair). None when a bare string/absent.
+#   - edition: `edition` string. None when absent.
+#   - is_abridged: `isAbridged` on the primary format entry; None when absent
+#     (the field is not present in the OpenAPI reference, so it resolves to
+#     None against the live API — exactly the AC-C3.2/C3.4 default).
+# ---------------------------------------------------------------------------
+
+
+class TestSeriesMetadata:
+    """FR-C1: series_name and series_position (AC-C1.1–C1.4)."""
+
+    def test_series_name_and_position_populated(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C1.1/C1.2: series_name and series_position populated from the item."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["9876543"]["series_name"] == "Dungeon Crawler Carl"
+        assert titles["9876543"]["series_position"] == 1.0
+        assert isinstance(titles["9876543"]["series_position"], float)
+
+    def test_series_position_coerced_to_float(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C1.4: readingOrder '1.5' coerces to 1.5 (float)."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["1234567"]["series_position"] == 1.5
+
+    def test_no_series_yields_none(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C1.3: no series object -> both keys present with None."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 3 (Project Hail Mary) has no series / detailedSeries.
+        assert "series_name" in titles["5555555"]
+        assert "series_position" in titles["5555555"]
+        assert titles["5555555"]["series_name"] is None
+        assert titles["5555555"]["series_position"] is None
+
+    def test_non_numeric_reading_order_yields_none(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C1.4: non-numeric readingOrder -> series_position None (name still set)."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 4 has detailedSeries.readingOrder == "not-a-number".
+        assert titles["7777777"]["series_name"] == "Bare Series String"
+        assert titles["7777777"]["series_position"] is None
+
+    def test_bare_string_series_does_not_crash(self, thunder_client: MagicMock) -> None:
+        """AC-C1.3/C1.4: a bare-string `series` with no detailedSeries resolves cleanly."""
+        thunder_client.search.return_value = {
+            "items": [{"id": "1", "title": "X", "series": "Some Series"}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        title = result["titles"][0]
+        assert title["series_name"] == "Some Series"
+        assert title["series_position"] is None
+
+
+class TestToFloat:
+    """FR-C1: _to_float helper (AC-C1.4)."""
+
+    def test_numeric_string(self) -> None:
+        assert search_titles._to_float("1") == 1.0
+        assert search_titles._to_float("2.5") == 2.5
+
+    def test_numeric_values(self) -> None:
+        assert search_titles._to_float(3) == 3.0
+        assert search_titles._to_float(4.0) == 4.0
+
+    def test_non_numeric_and_missing(self) -> None:
+        assert search_titles._to_float("not-a-number") is None
+        assert search_titles._to_float(None) is None
+        assert search_titles._to_float("") is None
+
+
+class TestNarratorPublisherEdition:
+    """FR-C2: narrator, publisher, edition (AC-C2.1–C2.4)."""
+
+    def test_narrator_list_from_creators(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C2.1: narrator is the list of creators[] whose role == Narrator."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["9876543"]["narrator"] == ["Jeff Hays"]
+        assert titles["1234567"]["narrator"] == ["Nick Podehl", "Rupert Degas"]
+
+    def test_narrator_empty_when_absent(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C2.1: narrator is [] when there are no creators / no narrators."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 3 has no creators array at all.
+        assert titles["5555555"]["narrator"] == []
+
+    def test_narrator_tolerates_malformed_creators(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C2.4: creators list with bare strings mixed in does not crash."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 4 creators = ["Just A String", {name: Real Narrator, role: Narrator}].
+        assert titles["7777777"]["narrator"] == ["Real Narrator"]
+
+    def test_publisher_string(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C2.2: publisher is the name string from publisher.name."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["9876543"]["publisher"] == "Podium Audio"
+
+    def test_publisher_bare_string_resolves_none(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C2.2/C2.4: a bare-string publisher (not an object) resolves to None."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 4 publisher is a bare string.
+        assert titles["7777777"]["publisher"] is None
+
+    def test_publisher_none_when_absent(self, thunder_client: MagicMock) -> None:
+        """AC-C2.2: publisher is None when the field is absent."""
+        thunder_client.search.return_value = {
+            "items": [{"id": "1", "title": "X"}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        title = result["titles"][0]
+        assert "publisher" in title
+        assert title["publisher"] is None
+
+    def test_edition_string(self, thunder_client: MagicMock, sample_search_response: dict) -> None:
+        """AC-C2.3: edition is the string value when present."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["9876543"]["edition"] == "Unabridged"
+
+    def test_edition_none_when_absent(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C2.3: edition is None when absent or null."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 3 has no edition key; item 4 has edition: null.
+        assert titles["5555555"]["edition"] is None
+        assert titles["7777777"]["edition"] is None
+
+
+class TestDurationAndAbridged:
+    """FR-C3: hours always present, is_abridged (AC-C3.1–C3.4)."""
+
+    def test_hours_key_always_present(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C3.1: every title has an `hours` key (float or None)."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        for title in result["titles"]:
+            assert "hours" in title
+            assert title["hours"] is None or isinstance(title["hours"], float)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Audiobook with a parseable duration -> float; ebook with empty -> None.
+        assert titles["9876543"]["hours"] == 12.6
+        assert titles["5555555"]["hours"] is None
+
+    def test_is_abridged_reflects_field(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C3.2/C3.3: is_abridged reads isAbridged from the primary format."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["9876543"]["is_abridged"] is False
+        assert titles["1234567"]["is_abridged"] is True
+
+    def test_is_abridged_none_when_absent(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-C3.2/C3.4: absent isAbridged -> None (unknown), not False."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 3 (ebook) and item 4 (audiobook) have no isAbridged on the format.
+        assert "is_abridged" in titles["5555555"]
+        assert titles["5555555"]["is_abridged"] is None
+        assert titles["7777777"]["is_abridged"] is None
+
+    def test_is_abridged_no_formats_does_not_crash(self, thunder_client: MagicMock) -> None:
+        """AC-C3.4: an item with no formats resolves is_abridged to None cleanly."""
+        thunder_client.search.return_value = {
+            "items": [{"id": "1", "title": "X"}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        title = result["titles"][0]
+        assert title["is_abridged"] is None
+        assert title["hours"] is None
