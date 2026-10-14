@@ -129,6 +129,36 @@ must run `./scripts/deploy.sh` and the Task 7 curl checks, then close out this i
 
 ---
 
+### 6. libby-mcp v2 — Group A: Targeted fixes (PR-A)
+
+Read `.kiro/specs/libby-mcp-v2/requirements.md`, `design.md`, and `tasks.md` in full,
+then implement tasks `A1`, `A2`, `A3`, `A4`.
+
+- Spec: `.kiro/specs/libby-mcp-v2/` · tasks `A1`, `A2`, `A3`, `A4`
+- [ ] Complete · PR: --
+
+---
+
+### 7. libby-mcp v2 — Group B: Multi-library search + hold intelligence (PR-B)
+
+Read `.kiro/specs/libby-mcp-v2/requirements.md`, `design.md`, and `tasks.md` in full,
+then implement tasks `B1`, `B2`, `B3`. Depends on item 6 (PR-A merged).
+
+- Spec: `.kiro/specs/libby-mcp-v2/` · tasks `B1`, `B2`, `B3`
+- [ ] Complete · PR: --
+
+---
+
+### 8. libby-mcp v2 — Group C: Content enrichment (PR-C)
+
+Read `.kiro/specs/libby-mcp-v2/requirements.md`, `design.md`, and `tasks.md` in full,
+then implement tasks `C1`, `C2`, `C3`. Depends on item 7 (PR-B merged).
+
+- Spec: `.kiro/specs/libby-mcp-v2/` · tasks `C1`, `C2`, `C3`
+- [ ] Complete · PR: --
+
+---
+
 ## Completed
 
 Items move here after they merge to `development`.
