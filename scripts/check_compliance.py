@@ -105,38 +105,31 @@ def check_tools() -> None:
 def check_handler() -> None:
     """Validate Lambda handler module (FastMCP-based).
 
-    After the FastMCP migration, src/handler.py exposes:
-    - lambda_handler(event, context): Lambda entry point
-    - mcp: the FastMCP application instance
-    - search_titles / get_availability / get_deep_link: registered tool fns
+    After the FastMCP migration (and the stateless-per-invocation refactor), the
+    FastMCP instance and its @mcp.tool functions are created inside
+    ``_make_mcp()`` on every invocation rather than exposed at module scope
+    (StreamableHTTPSessionManager.run() can only be called once per instance).
+    The stable module-level surface is therefore:
+
+    - ``lambda_handler(event, context)``: Lambda entry point
+    - ``_make_mcp()``: builds a fresh FastMCP app with all tools registered
+    - ``_build_app()``: wraps the FastMCP ASGI app in AuthMiddleware
+
+    Tool registration is validated end-to-end by the handler tests
+    (``tests/test_handler.py`` asserts ``tools/list`` contains each tool),
+    which exercise the real registered schema rather than a module attribute.
     """
     if not check_module_exists("src.handler", "handler"):
         return
     from src import handler  # type: ignore[attr-defined]
 
-    if not hasattr(handler, "lambda_handler"):
-        record(
-            "handler_entrypoint",
-            "FAIL",
-            "src.handler missing lambda_handler() function",
-            "REMEDIATION: Define function lambda_handler(event, context) in src/handler.py",
-        )
-
-    if not hasattr(handler, "mcp"):
-        record(
-            "handler_fastmcp_app",
-            "FAIL",
-            "src.handler missing FastMCP app instance 'mcp'",
-            'REMEDIATION: Define mcp = FastMCP("libby-mcp") in src/handler.py',
-        )
-
-    for tool_fn in ("search_titles", "get_availability", "get_deep_link"):
-        if not hasattr(handler, tool_fn):
+    for fn in ("lambda_handler", "_make_mcp", "_build_app"):
+        if not hasattr(handler, fn):
             record(
-                f"handler_tool_{tool_fn}",
+                f"handler_{fn}",
                 "FAIL",
-                f"src.handler missing @mcp.tool function: {tool_fn}",
-                f"REMEDIATION: Register {tool_fn} with @mcp.tool() in src/handler.py",
+                f"src.handler missing {fn}() function",
+                f"REMEDIATION: Define {fn}(...) in src/handler.py",
             )
 
 

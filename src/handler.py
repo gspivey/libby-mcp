@@ -50,13 +50,14 @@ def _make_mcp() -> FastMCP:
     @mcp.tool(
         description=(
             "Search a library's OverDrive catalog via the Thunder API. Returns titles "
-            "with availability info, deep links, and copy/hold counts. Also returns facets "
-            "(including valid subject IDs for the library)."
+            "with availability info, deep links, and copy/hold counts. Facets (including "
+            "valid subject IDs for the library) are opt-in: pass include_facets=true to "
+            "receive them; by default the facets block is omitted to reduce payload size."
         )
     )
     def search_titles(
         library_slug: Annotated[
-            str, Field(description="Library identifier (e.g., lcpl, fairfaxcounty, nypl)")
+            str, Field(description="Library identifier (e.g., lcpl, fairfax, nypl)")
         ],
         subjects: Annotated[
             list[str | int] | None, Field(description="Subject IDs to filter by")
@@ -87,8 +88,17 @@ def _make_mcp() -> FastMCP:
             str | None,
             Field(description="Full-text search on title+subtitle+description"),
         ] = None,
+        include_facets: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Include the facets block (valid subject IDs, etc.) in the response. "
+                    "Defaults to false — facets are opt-in to reduce payload size."
+                )
+            ),
+        ] = False,
     ) -> dict[str, Any]:
-        args: dict[str, Any] = {"library_slug": library_slug}
+        args: dict[str, Any] = {"library_slug": library_slug, "include_facets": include_facets}
         for k, v in {
             "subjects": subjects,
             "format": format,

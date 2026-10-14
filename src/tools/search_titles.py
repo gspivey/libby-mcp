@@ -38,8 +38,10 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
         client: ThunderClient instance for API calls.
 
     Returns:
-        Search response: {titles, total_items, page, total_pages, filtered_count, facets}
-        or {error: "..."} on validation/API failure.
+        Search response: {library_slug, titles, total_items, page, total_pages,
+        filtered_count}. Includes a `facets` object only when
+        params["include_facets"] is truthy (FR-A4). Returns {error: "..."} on
+        validation/API failure.
     """
     library_slug = params.get("library_slug")
     if not library_slug:
@@ -76,14 +78,18 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     last_page = links.get("last", {}).get("page", 1)
     current_page = links.get("self", {}).get("page", 1)
 
-    return {
+    result: dict[str, Any] = {
+        "library_slug": library_slug,
         "titles": titles,
         "total_items": total_items,
         "page": current_page,
         "total_pages": last_page,
         "filtered_count": len(titles),
-        "facets": response.get("facets", {}),
     }
+    # Facets are opt-in (FR-A4): omit the key entirely unless requested.
+    if params.get("include_facets"):
+        result["facets"] = response.get("facets", {})
+    return result
 
 
 def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:

@@ -45,7 +45,7 @@ class ThunderClient:
             Parsed JSON response on success, or a dict with "error" key on failure.
         """
         url = self._build_search_url(slug, params)
-        return self._execute_get(url)
+        return self._execute_get(url, slug=slug)
 
     def get_availability(self, slug: str, title_ids: list[str]) -> dict[str, Any]:
         """Get availability data for specific titles at a library.
@@ -61,7 +61,7 @@ class ThunderClient:
             Parsed JSON response with items array, or dict with "error" key.
         """
         url = self._build_availability_url(slug, title_ids)
-        return self._execute_get(url)
+        return self._execute_get(url, slug=slug)
 
     def _build_search_url(self, slug: str, params: dict[str, Any]) -> str:
         """Build the full search URL with query parameters."""
@@ -90,8 +90,14 @@ class ThunderClient:
                 parts.append((key, str(value)))
         return urlencode(parts)
 
-    def _execute_get(self, url: str) -> dict[str, Any]:
+    def _execute_get(self, url: str, slug: str | None = None) -> dict[str, Any]:
         """Execute a GET request with error handling.
+
+        Args:
+            url: The fully-constructed request URL.
+            slug: The library slug the request targets, used to produce a
+                  human-readable message on HTTP 404 (FR-A2). When ``None``,
+                  a 404 falls back to the generic service-error message.
 
         Returns parsed JSON on success, or {"error": "..."} on failure.
         """
@@ -114,15 +120,23 @@ class ThunderClient:
             return {"error": "Library catalog temporarily unavailable — try again"}
         except httpx.HTTPStatusError as e:
             duration = time.monotonic() - start
+            status = e.response.status_code
             logger.warning(
                 "thunder_http_error",
                 extra={
                     "url": url,
-                    "status": e.response.status_code,
+                    "status": status,
                     "duration_ms": duration * 1000,
                 },
             )
-            return {"error": f"OverDrive service error (HTTP {e.response.status_code})"}
+            if status == 404 and slug is not None:
+                return {
+                    "error": (
+                        f"unknown library slug: {slug} — check the slug is correct "
+                        "(e.g. lcpl, fairfax, nypl)"
+                    )
+                }
+            return {"error": f"OverDrive service error (HTTP {status})"}
         except Exception as e:
             duration = time.monotonic() - start
             logger.error(

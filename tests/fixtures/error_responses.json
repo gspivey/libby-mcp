@@ -28,5 +28,11 @@
     "error_type": "rate_limited",
     "status_code": 429,
     "body": {"message": "Rate limit exceeded"}
+  },
+  "not_found": {
+    "description": "Unknown library slug returns an explicit HTTP 404 (FR-A2)",
+    "error_type": "not_found",
+    "status_code": 404,
+    "body": {"message": "Not Found"}
   }
 }

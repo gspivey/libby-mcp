@@ -217,14 +217,55 @@ class TestPaginationMetadata:
 
 
 class TestFacets:
-    """Test that facets are included in the response."""
+    """Test facets opt-in behavior (FR-A4)."""
 
-    def test_facets_included(self, thunder_client: MagicMock, sample_search_response: dict) -> None:
-        """AC-1.18: Response includes facets with subjects."""
+    def test_facets_included_when_opted_in(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-A4.3: include_facets=True returns the populated facets object."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "include_facets": True}, thunder_client
+        )
+        assert (
+            "facets" in result
+        ), "REMEDIATION: search_titles response must include facets when include_facets=True"
+        assert "subjects" in result["facets"]
+
+    def test_facets_omitted_by_default(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-A4.1/A4.2: facets key is absent (not empty) when include_facets omitted."""
         thunder_client.search.return_value = sample_search_response
         result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
-        assert "facets" in result, "REMEDIATION: search_titles response must include facets"
-        assert "subjects" in result["facets"]
+        assert (
+            "facets" not in result
+        ), "REMEDIATION: facets must be omitted entirely when include_facets is not set"
+
+    def test_facets_omitted_when_explicitly_false(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-A4.2: include_facets=False omits the facets key entirely."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "include_facets": False}, thunder_client
+        )
+        assert "facets" not in result
+
+
+class TestLibrarySlugEcho:
+    """FR-A3: single-library response echoes the queried library_slug."""
+
+    def test_library_slug_echoed(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-A3.1: single-library response includes top-level library_slug."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        assert result.get("library_slug") == "lcpl", (
+            "REMEDIATION: search_titles single-library response must include "
+            "a top-level library_slug equal to the queried slug"
+        )
 
 
 class TestValidation:
