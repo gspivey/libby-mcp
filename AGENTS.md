@@ -1,9 +1,10 @@
 # Agent Guide -- libby-mcp
 
 An MCP server exposing OverDrive/Libby library catalog search to Claude/Kiro.
-Three fact-finding tools (search_titles, get_availability, get_deep_link) that
-return raw data from the Thunder API. No recommendations or advisory logic --
-the LLM caller does reasoning.
+Two fact-finding tools (search_titles, get_availability) that return raw data
+from the Thunder API — no recommendations or advisory logic. The LLM caller does
+reasoning. (The deep-link capability is now the `link` field in search results;
+the standalone get_deep_link tool was retired in v2.)
 
 ## Quick Commands
 

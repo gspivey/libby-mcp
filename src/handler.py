@@ -20,7 +20,6 @@ from pydantic import Field
 from src.auth import AuthMiddleware
 from src.thunder_client import ThunderClient
 from src.tools import availability as availability_impl
-from src.tools import deep_link as deep_link_impl
 from src.tools import search_titles as search_titles_impl
 
 # Module-level -- reused across warm Lambda invocations
@@ -49,16 +48,31 @@ def _make_mcp() -> FastMCP:
 
     @mcp.tool(
         description=(
-            "Search a library's OverDrive catalog via the Thunder API. Returns titles "
-            "with availability info, deep links, and copy/hold counts. Facets (including "
-            "valid subject IDs for the library) are opt-in: pass include_facets=true to "
+            "Search one or more libraries' OverDrive catalogs via the Thunder API. "
+            "Returns titles with availability info (including holds_per_copy and "
+            "estimated_wait_days folded in from the search response), deep links (each "
+            "title's `link` field), and copy/hold counts. Provide exactly one of "
+            "library_slug (single library, flat response) or library_slugs (fan-out "
+            "across up to 10 libraries, results grouped per library). Facets (valid "
+            "subject IDs for the library) are opt-in: pass include_facets=true to "
             "receive them; by default the facets block is omitted to reduce payload size."
         )
     )
-    def search_titles(
+    async def search_titles(
         library_slug: Annotated[
-            str, Field(description="Library identifier (e.g., lcpl, fairfax, nypl)")
-        ],
+            str | None,
+            Field(description="Single library identifier (e.g., lcpl, fairfax, nypl)"),
+        ] = None,
+        library_slugs: Annotated[
+            list[str] | None,
+            Field(
+                description=(
+                    "Multiple library identifiers to search in parallel (e.g., "
+                    "['lcpl', 'fairfax', 'nypl']). Mutually exclusive with library_slug; "
+                    "max 10 libraries. Results are grouped per library."
+                )
+            ),
+        ] = None,
         subjects: Annotated[
             list[str | int] | None, Field(description="Subject IDs to filter by")
         ] = None,
@@ -98,8 +112,12 @@ def _make_mcp() -> FastMCP:
             ),
         ] = False,
     ) -> dict[str, Any]:
-        args: dict[str, Any] = {"library_slug": library_slug, "include_facets": include_facets}
+        # Build args dict from non-None values only, so a library_slugs-only
+        # call never carries a stray library_slug=None into validation.
+        args: dict[str, Any] = {"include_facets": include_facets}
         for k, v in {
+            "library_slug": library_slug,
+            "library_slugs": library_slugs,
             "subjects": subjects,
             "format": format,
             "available": available,
@@ -115,7 +133,26 @@ def _make_mcp() -> FastMCP:
         }.items():
             if v is not None:
                 args[k] = v
-        result = search_titles_impl.handle(args, _thunder_client)
+
+        # One-of validation (AC-B1.2)
+        has_slug = "library_slug" in args
+        has_slugs = "library_slugs" in args
+        if has_slug and has_slugs:
+            raise ToolError("provide either library_slug or library_slugs, not both")
+        if not has_slug and not has_slugs:
+            raise ToolError("library_slug or library_slugs is required")
+
+        # Dispatch
+        if has_slugs:
+            # library_slugs validation (AC-B1.9–B1.12), then dedupe before fan-out.
+            err = search_titles_impl.validate_library_slugs(args["library_slugs"])
+            if err is not None:
+                raise ToolError(err)
+            args["library_slugs"] = search_titles_impl.dedupe_library_slugs(args["library_slugs"])
+            result = await search_titles_impl.handle_multi(args, _thunder_client)
+        else:
+            result = search_titles_impl.handle(args, _thunder_client)
+
         if "error" in result:
             raise ToolError(result["error"])
         return result
@@ -136,21 +173,6 @@ def _make_mcp() -> FastMCP:
         result = availability_impl.handle(
             {"library_slug": library_slug, "title_ids": title_ids}, _thunder_client
         )
-        if "error" in result:
-            raise ToolError(result["error"])
-        return result
-
-    @mcp.tool(
-        description=(
-            "Generate a direct OverDrive link for a specific title. "
-            "Format: https://{slug}.overdrive.com/media/{id}"
-        )
-    )
-    def get_deep_link(
-        title_id: Annotated[str | int, Field(description="OverDrive numeric title ID")],
-        library_slug: Annotated[str, Field(description="Library slug for the link context")],
-    ) -> dict[str, Any]:
-        result = deep_link_impl.handle({"title_id": title_id, "library_slug": library_slug})
         if "error" in result:
             raise ToolError(result["error"])
         return result

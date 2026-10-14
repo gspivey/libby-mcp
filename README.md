@@ -1,16 +1,15 @@
 # Libby MCP Server
 
 An MCP server exposing OverDrive/Libby library catalog search to Claude and Kiro.
-Three fact-finding tools that return raw data from the Thunder API — no
+Two fact-finding tools that return raw data from the Thunder API — no
 recommendations or advisory logic. The LLM caller does the reasoning.
 
 ## Tools
 
 | Tool | Description |
 |------|-------------|
-| `search_titles` | Search a library's OverDrive catalog with filters (subjects, format, availability, creator, BISAC codes, duration, etc.) |
+| `search_titles` | Search one or more libraries' OverDrive catalogs with filters (subjects, format, availability, creator, BISAC codes, duration, etc.). Each result includes a direct OverDrive `link`, folded availability signals (`holds_per_copy`, `estimated_wait_days`), and copy/hold counts. Supports multi-library fan-out via `library_slugs`. |
 | `get_availability` | Get raw copy/hold counts for specific titles at a library |
-| `get_deep_link` | Generate a direct OverDrive link for a specific title |
 
 All tools accept a `library_slug` parameter (e.g., `lcpl`, `fairfax`, `nypl`) — any
 OverDrive library works.
@@ -102,14 +101,12 @@ They run on a daily schedule in CI, not on every PR.
 
 ```
 src/                    Python source (Lambda function code)
-  handler.py            Lambda entry point
-  mcp_server.py         MCP JSON-RPC 2.0 protocol layer
+  handler.py            Lambda entry point (FastMCP over Mangum)
   auth.py               Bearer token validation
   thunder_client.py     HTTP client for Thunder API
   tools/                MCP tool handlers
-    search_titles.py    Catalog search with filtering
+    search_titles.py    Catalog search with filtering, multi-library fan-out
     availability.py     Batch availability lookup
-    deep_link.py        URL generation
 
 infra/                  AWS CDK stack (TypeScript)
   bin/libby-mcp.ts      CDK app entry point

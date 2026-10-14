@@ -47,6 +47,27 @@ class ThunderClient:
         url = self._build_search_url(slug, params)
         return self._execute_get(url, slug=slug)
 
+    async def search_async(
+        self, slug: str, params: dict[str, Any], async_client: httpx.AsyncClient
+    ) -> dict[str, Any]:
+        """Async variant of :meth:`search` for multi-library fan-out (FR-B1).
+
+        The ``AsyncClient`` is passed in (created per fan-out, scoped to the
+        current event loop) rather than stored on the instance: a client bound
+        to a previous, now-closed loop would have an unusable connection pool on
+        warm Lambda invocations.
+
+        Args:
+            slug: Library identifier.
+            params: Query parameters (already built for the Thunder API).
+            async_client: An ``httpx.AsyncClient`` scoped to the current loop.
+
+        Returns:
+            Parsed JSON response on success, or a dict with "error" key on failure.
+        """
+        url = self._build_search_url(slug, params)
+        return await self._execute_get_async(url, async_client, slug=slug)
+
     def get_availability(self, slug: str, title_ids: list[str]) -> dict[str, Any]:
         """Get availability data for specific titles at a library.
 
@@ -128,6 +149,54 @@ class ThunderClient:
                     "status": status,
                     "duration_ms": duration * 1000,
                 },
+            )
+            if status == 404 and slug is not None:
+                return {
+                    "error": (
+                        f"unknown library slug: {slug} — check the slug is correct "
+                        "(e.g. lcpl, fairfax, nypl)"
+                    )
+                }
+            return {"error": f"OverDrive service error (HTTP {status})"}
+        except Exception as e:
+            duration = time.monotonic() - start
+            logger.error(
+                "thunder_unexpected_error",
+                extra={"url": url, "error": str(e), "duration_ms": duration * 1000},
+            )
+            return {"error": "Unexpected error communicating with library catalog"}
+
+    async def _execute_get_async(
+        self, url: str, async_client: httpx.AsyncClient, slug: str | None = None
+    ) -> dict[str, Any]:
+        """Async mirror of :meth:`_execute_get` for fan-out searches (FR-B1).
+
+        Same logging and error mapping (including the FR-A2 404 message), but
+        awaits the request on the per-fan-out ``async_client``.
+        """
+        start = time.monotonic()
+        try:
+            response = await async_client.get(url)
+            duration = time.monotonic() - start
+            logger.info(
+                "thunder_request",
+                extra={"url": url, "status": response.status_code, "duration_ms": duration * 1000},
+            )
+            response.raise_for_status()
+            return response.json()  # type: ignore[no-any-return]
+        except httpx.TimeoutException:
+            duration = time.monotonic() - start
+            logger.warning(
+                "thunder_timeout",
+                extra={"url": url, "duration_ms": duration * 1000},
+            )
+            return {"error": "Library catalog temporarily unavailable — try again"}
+        except httpx.HTTPStatusError as e:
+            duration = time.monotonic() - start
+            status = e.response.status_code
+            logger.warning(
+                "thunder_http_error",
+                extra={"url": url, "status": status, "duration_ms": duration * 1000},
             )
             if status == 404 and slug is not None:
                 return {

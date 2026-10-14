@@ -90,7 +90,8 @@ async def test_initialize_returns_server_info(client):
     assert "protocolVersion" in body["result"]
 
 
-async def test_tools_list_contains_all_tools(client):
+async def test_tools_list_contains_remaining_tools(client):
+    """AC-B3.1/AC-B3.5: after v2 PR-B only the two remaining tools are registered."""
     resp = await client.post(
         "/mcp",
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
@@ -100,7 +101,20 @@ async def test_tools_list_contains_all_tools(client):
     tool_names = [t["name"] for t in resp.json()["result"]["tools"]]
     assert "search_titles" in tool_names
     assert "get_availability" in tool_names
-    assert "get_deep_link" in tool_names
+
+
+async def test_get_deep_link_not_registered(client):
+    """AC-B3.1 / NFR-4.3: get_deep_link is retired and absent from tools/list."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tool_names = [t["name"] for t in resp.json()["result"]["tools"]]
+    assert (
+        "get_deep_link" not in tool_names
+    ), "REMEDIATION: get_deep_link must be removed from the registered tool set in v2"
 
 
 async def test_tools_list_without_init_works_stateless(client):
@@ -114,25 +128,44 @@ async def test_tools_list_without_init_works_stateless(client):
     assert "tools" in resp.json()["result"]
 
 
-async def test_get_deep_link_returns_url(client):
-    resp = await client.post(
-        "/mcp",
-        json={
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": "get_deep_link",
-                "arguments": {"title_id": "12345", "library_slug": "lcpl"},
+async def test_search_titles_multi_library_e2e(client):
+    """AC-B1.6 / CRITICAL-1: multi-library fan-out runs through the real FastMCP app.
+
+    This drives the registered async search_titles tool under a running event
+    loop (as Mangum does), proving the async fan-out does not raise
+    `asyncio.run() cannot be called from a running event loop`.
+    """
+
+    async def fake_search_async(slug, params, async_client):
+        return {
+            "items": [{"id": f"{slug}-1", "title": f"Book from {slug}"}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+
+    with patch(
+        "src.thunder_client.ThunderClient.search_async",
+        side_effect=fake_search_async,
+    ):
+        resp = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "search_titles",
+                    "arguments": {"library_slugs": ["lcpl", "fairfax"]},
+                },
             },
-        },
-        headers=BASE_HEADERS,
-    )
+            headers=BASE_HEADERS,
+        )
     assert resp.status_code == 200
     result = resp.json()["result"]
-    assert result.get("isError") is not True
-    content_text = result["content"][0]["text"]
-    assert "lcpl.overdrive.com" in content_text
+    assert result.get("isError") is not True, result
+    payload = json.loads(result["content"][0]["text"])
+    slugs = [block["library_slug"] for block in payload["libraries"]]
+    assert slugs == ["lcpl", "fairfax"]
 
 
 async def test_search_titles_mocked(client):
@@ -299,3 +332,59 @@ async def test_search_titles_schema_has_include_facets(client):
     assert (
         "include_facets" in props
     ), "REMEDIATION: search_titles must expose an include_facets parameter"
+
+
+async def test_search_titles_schema_has_library_slugs(client):
+    """AC-B1.1: search_titles exposes a library_slugs array parameter."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 10, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
+    props = tools["search_titles"]["inputSchema"]["properties"]
+    assert (
+        "library_slugs" in props
+    ), "REMEDIATION: search_titles must expose a library_slugs parameter"
+    assert "library_slug" in props
+
+
+async def _call_search(client, arguments, call_id):
+    return await client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": call_id,
+            "method": "tools/call",
+            "params": {"name": "search_titles", "arguments": arguments},
+        },
+        headers=BASE_HEADERS,
+    )
+
+
+async def test_search_titles_both_slug_forms_errors(client):
+    """AC-B1.2: providing both library_slug and library_slugs is a validation error."""
+    resp = await _call_search(client, {"library_slug": "lcpl", "library_slugs": ["lcpl"]}, 11)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "not both" in result["content"][0]["text"]
+
+
+async def test_search_titles_neither_slug_form_errors(client):
+    """AC-B1.2: providing neither library_slug nor library_slugs is a validation error."""
+    resp = await _call_search(client, {}, 12)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "is required" in result["content"][0]["text"]
+
+
+async def test_search_titles_empty_slugs_errors(client):
+    """AC-B1.9: an empty library_slugs list is a validation error."""
+    resp = await _call_search(client, {"library_slugs": []}, 13)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "must not be empty" in result["content"][0]["text"]

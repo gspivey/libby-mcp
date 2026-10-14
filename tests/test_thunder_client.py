@@ -218,3 +218,43 @@ class TestHumanReadable404:
                 "unknown library slug:  — check the slug is correct " "(e.g. lcpl, fairfax, nypl)"
             )
         }
+
+
+class TestAsyncSearch:
+    """FR-B1: search_async mirrors search for the fan-out path."""
+
+    async def test_search_async_returns_json(self) -> None:
+        """search_async returns the parsed JSON body on success."""
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        payload = {"items": [{"id": "1"}], "totalItems": 1}
+        with patch("httpx.AsyncClient.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value=payload),
+                raise_for_status=MagicMock(),
+            )
+            async with httpx.AsyncClient() as ac:
+                result = await client.search_async("lcpl", {}, ac)
+        assert result == payload
+
+    async def test_search_async_404_names_slug(self) -> None:
+        """AC-A2.1 reused on async path: 404 -> human-readable unknown-slug message."""
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Not Found", request=MagicMock(), response=mock_response
+        )
+        with patch("httpx.AsyncClient.get", return_value=mock_response):
+            async with httpx.AsyncClient() as ac:
+                result = await client.search_async("badslug", {}, ac)
+        assert result == {
+            "error": (
+                "unknown library slug: badslug — check the slug is correct "
+                "(e.g. lcpl, fairfax, nypl)"
+            )
+        }
