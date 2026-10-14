@@ -12,7 +12,7 @@ recommendations or advisory logic. The LLM caller does the reasoning.
 | `get_availability` | Get raw copy/hold counts for specific titles at a library |
 | `get_deep_link` | Generate a direct OverDrive link for a specific title |
 
-All tools accept a `library_slug` parameter (e.g., `lcpl`, `fairfaxcounty`, `nypl`) — any
+All tools accept a `library_slug` parameter (e.g., `lcpl`, `fairfax`, `nypl`) — any
 OverDrive library works.
 
 ## Setup

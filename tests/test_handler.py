@@ -243,3 +243,59 @@ def test_warm_start_two_sequential_invocations(monkeypatch):
 
     result2 = lambda_handler(event, None)
     assert result2["statusCode"] == 200, f"Second (warm) invocation failed: {result2}"
+
+
+async def test_search_titles_schema_uses_verified_slugs(client):
+    """AC-A1.1/A1.3: search_titles schema references 'fairfax', never 'fairfaxcounty'."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 7, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
+    blob = json.dumps(tools["search_titles"])
+    assert (
+        "fairfaxcounty" not in blob
+    ), "REMEDIATION: search_titles schema/description must use 'fairfax', not 'fairfaxcounty'"
+    assert "fairfax" in blob
+
+
+async def test_no_fairfaxcounty_in_any_tool_schema(client):
+    """AC-A1.3: no registered tool description or schema references 'fairfaxcounty'."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 8, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    blob = json.dumps(resp.json()["result"]["tools"])
+    assert (
+        "fairfaxcounty" not in blob
+    ), "REMEDIATION: no shipped tool schema may reference 'fairfaxcounty'"
+
+
+def test_no_fairfaxcounty_literal_in_src():
+    """AC-A1.3: no 'fairfaxcounty' literal remains anywhere under src/."""
+    from pathlib import Path
+
+    src_dir = Path(__file__).resolve().parent.parent / "src"
+    offenders = [
+        str(p) for p in src_dir.rglob("*.py") if "fairfaxcounty" in p.read_text(encoding="utf-8")
+    ]
+    assert offenders == [], f"REMEDIATION: remove 'fairfaxcounty' literal from: {offenders}"
+
+
+async def test_search_titles_schema_has_include_facets(client):
+    """AC-A4.1: search_titles exposes an include_facets boolean parameter."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 9, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
+    props = tools["search_titles"]["inputSchema"]["properties"]
+    assert (
+        "include_facets" in props
+    ), "REMEDIATION: search_titles must expose an include_facets parameter"

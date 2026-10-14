@@ -139,3 +139,82 @@ class TestUserAgent:
         assert (
             client._client.headers.get("user-agent") == "libby-mcp/1.0"
         ), "REMEDIATION: ThunderClient must set User-Agent to 'libby-mcp/1.0'"
+
+
+class TestHumanReadable404:
+    """FR-A2: HTTP 404 yields a human-readable error naming the bad slug."""
+
+    @staticmethod
+    def _mock_404_response() -> MagicMock:
+        import httpx
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Not Found", request=MagicMock(), response=mock_response
+        )
+        return mock_response
+
+    def test_search_404_names_slug(self) -> None:
+        """AC-A2.1/A2.2: search 404 -> unknown library slug message with the slug."""
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.return_value = self._mock_404_response()
+            result = client.search("badslug", {})
+        assert result == {
+            "error": (
+                "unknown library slug: badslug — check the slug is correct "
+                "(e.g. lcpl, fairfax, nypl)"
+            )
+        }
+
+    def test_availability_404_names_slug(self) -> None:
+        """AC-A2.2: availability 404 -> same human-readable message with the slug."""
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.return_value = self._mock_404_response()
+            result = client.get_availability("nope", ["1"])
+        assert result == {
+            "error": (
+                "unknown library slug: nope — check the slug is correct "
+                "(e.g. lcpl, fairfax, nypl)"
+            )
+        }
+
+    def test_non_404_keeps_generic_message(self) -> None:
+        """AC-A2.3: non-404 HTTP errors keep the generic OverDrive service error message."""
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = 503
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Service Unavailable", request=MagicMock(), response=mock_response
+            )
+            mock_get.return_value = mock_response
+            result = client.search("lcpl", {})
+        assert result == {"error": "OverDrive service error (HTTP 503)"}
+
+    def test_timeout_unchanged_by_404_handling(self) -> None:
+        """AC-A2.4: timeout path is unchanged."""
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.side_effect = httpx.TimeoutException("timed out")
+            result = client.search("lcpl", {})
+        assert "error" in result
+        assert "unavailable" in result["error"].lower()
+
+    def test_empty_slug_404_does_not_crash(self) -> None:
+        """AC-A2.5: an empty slug interpolates safely (no formatting crash)."""
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.return_value = self._mock_404_response()
+            result = client.search("", {})
+        assert result == {
+            "error": (
+                "unknown library slug:  — check the slug is correct " "(e.g. lcpl, fairfax, nypl)"
+            )
+        }
