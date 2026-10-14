@@ -1,15 +1,15 @@
-# Docker build context ignore for PythonFunction (CDK) Lambda bundling.
-#
-# IMPORTANT: do NOT exclude src/ or requirements.txt — PythonFunction needs
-# both to bundle the Lambda handler and its dependencies (FR-6.1).
-#
-# Only exclude artifacts that must never ship inside the Lambda bundle.
+# CDK bundler exclusions -- keep the Lambda asset small
+# The PythonFunction asset entry is the repo root, so these paths
+# are relative to ~/Development/libby-mcp/
+
+infra/
 .git/
-__pycache__/
 .venv/
+__pycache__/
+*.pyc
+*.pyo
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-infra/
-infra/node_modules/
 cdk.out/
+node_modules/

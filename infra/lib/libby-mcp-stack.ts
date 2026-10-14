@@ -41,6 +41,23 @@ export class LibbyMcpStack extends cdk.Stack {
         LIBBY_MCP_API_KEY: apiKeySecret.secretValue.unsafeUnwrap(),
       },
       logGroup,
+      bundling: {
+        // Exclude large directories from the rsync inside the Docker container.
+        // .dockerignore only affects the Docker image build context, not the
+        // rsync that copies /asset-input -> /asset-output inside the container.
+        assetExcludes: [
+          ".git",
+          "infra",
+          ".venv",
+          "__pycache__",
+          "*.pyc",
+          ".pytest_cache",
+          ".mypy_cache",
+          ".ruff_cache",
+          "cdk.out",
+          "node_modules",
+        ],
+      },
     });
 
     // API Gateway HTTP API
