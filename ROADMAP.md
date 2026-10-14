@@ -145,7 +145,7 @@ Read `.kiro/specs/libby-mcp-v2/requirements.md`, `design.md`, and `tasks.md` in 
 then implement tasks `B1`, `B2`, `B3`. Depends on item 6 (PR-A merged).
 
 - Spec: `.kiro/specs/libby-mcp-v2/` · tasks `B1`, `B2`, `B3`
-- [ ] Complete · PR: --
+- [x] Complete · PR: #16
 
 ---
 
@@ -192,3 +192,8 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp-v2/` · tasks `A1`, `A2`, `A3`, `A4`
 - [x] Complete · PR: #13
+
+### 7. libby-mcp v2 — Group B: Multi-library search + hold intelligence (PR-B)
+
+- Spec: `.kiro/specs/libby-mcp-v2/` · tasks `B1`, `B2`, `B3`
+- [x] Complete · PR: #16

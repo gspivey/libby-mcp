@@ -311,3 +311,238 @@ class TestInvalidSlugDetection:
         assert (
             "error" not in result
         ), "REMEDIATION: Empty results with narrowing filters must NOT be treated as error"
+
+
+# ---------------------------------------------------------------------------
+# Group B — Fold availability into search (FR-B2)
+# ---------------------------------------------------------------------------
+
+
+class TestFoldedAvailability:
+    """FR-B2: holds_per_copy and estimated_wait_days folded into each title."""
+
+    def test_holds_per_copy_ratio(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-B2.1: holds_per_copy == round(holdsCount / ownedCopies, 1)."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # item 1: holds 0 / owned 3 -> 0.0
+        assert titles["9876543"]["holds_per_copy"] == 0.0
+        # item 2: holds 3 / owned 5 -> 0.6
+        assert titles["1234567"]["holds_per_copy"] == 0.6
+        # item 3: holds 1 / owned 2 -> 0.5
+        assert titles["5555555"]["holds_per_copy"] == 0.5
+
+    def test_holds_per_copy_zero_owned_zero_holds(self, thunder_client: MagicMock) -> None:
+        """AC-B2.2: owned 0 and holds 0 -> 0.0 (no contention), no crash."""
+        thunder_client.search.return_value = {
+            "items": [{"id": "1", "title": "X", "ownedCopies": 0, "holdsCount": 0}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        assert result["titles"][0]["holds_per_copy"] == 0.0
+
+    def test_holds_per_copy_zero_owned_positive_holds(self, thunder_client: MagicMock) -> None:
+        """AC-B2.2: owned 0 and holds > 0 -> None (ratio not meaningful)."""
+        thunder_client.search.return_value = {
+            "items": [{"id": "1", "title": "X", "ownedCopies": 0, "holdsCount": 4}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        assert result["titles"][0]["holds_per_copy"] is None
+
+    def test_estimated_wait_days_from_field(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-B2.3: estimated_wait_days sourced from estimatedWaitDays."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        assert titles["1234567"]["estimated_wait_days"] == 14
+
+    def test_estimated_wait_days_absent_is_none(self, thunder_client: MagicMock) -> None:
+        """AC-B2.3/B2.4: absent estimatedWaitDays -> None (unknown), not 0."""
+        thunder_client.search.return_value = {
+            "items": [{"id": "1", "title": "X", "ownedCopies": 2, "holdsCount": 1}],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        title = result["titles"][0]
+        assert "estimated_wait_days" in title
+        assert title["estimated_wait_days"] is None
+
+    def test_existing_fields_intact(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-B2.5: folding does not break existing title fields."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        title = result["titles"][0]
+        for key in (
+            "available",
+            "available_copies",
+            "owned_copies",
+            "holds_count",
+            "hours",
+        ):
+            assert key in title
+
+
+# ---------------------------------------------------------------------------
+# Group B — Retire get_deep_link / well-formed links (FR-B3)
+# ---------------------------------------------------------------------------
+
+
+class TestWellFormedLinks:
+    """FR-B3: every returned title carries a well-formed, non-empty link."""
+
+    def test_link_well_formed_for_every_item(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-B3.2/B3.3: link == https://{slug}.overdrive.com/media/{id}, never malformed."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        for title in result["titles"]:
+            assert title["link"] == f"https://lcpl.overdrive.com/media/{title['id']}"
+            assert title["link"]
+            assert not title["link"].endswith("/media/")
+            assert not title["link"].endswith("/media/None")
+
+    def test_item_missing_id_is_dropped(self, thunder_client: MagicMock) -> None:
+        """AC-B3.3: an item with missing/None id is excluded, not emitted as a bad link."""
+        thunder_client.search.return_value = {
+            "items": [
+                {"id": "111", "title": "Keeper"},
+                {"id": None, "title": "No ID"},
+                {"title": "Missing ID key"},
+            ],
+            "totalItems": 3,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        ids = [t["id"] for t in result["titles"]]
+        assert ids == ["111"]
+        assert result["filtered_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Group B — Multi-library fan-out (FR-B1)
+# ---------------------------------------------------------------------------
+
+
+class TestLibrarySlugsValidation:
+    """FR-B1 validation (AC-B1.9–B1.12)."""
+
+    def test_empty_list(self) -> None:
+        assert search_titles.validate_library_slugs([]) == "library_slugs must not be empty"
+
+    def test_blank_entry(self) -> None:
+        assert (
+            search_titles.validate_library_slugs(["lcpl", "   "])
+            == "library_slugs contains invalid entry: empty slug"
+        )
+
+    def test_empty_string_entry(self) -> None:
+        assert (
+            search_titles.validate_library_slugs([""])
+            == "library_slugs contains invalid entry: empty slug"
+        )
+
+    def test_too_many_after_dedupe(self) -> None:
+        slugs = [f"lib{i}" for i in range(11)]
+        assert (
+            search_titles.validate_library_slugs(slugs)
+            == "library_slugs exceeds maximum of 10 libraries"
+        )
+
+    def test_duplicates_within_cap_ok(self) -> None:
+        # 11 entries but only 2 unique -> valid
+        slugs = ["lcpl", "fairfax"] * 6
+        assert search_titles.validate_library_slugs(slugs) is None
+
+    def test_dedupe_preserves_first_seen_order(self) -> None:
+        assert search_titles.dedupe_library_slugs(
+            ["lcpl", "fairfax", "lcpl", "nypl", "fairfax"]
+        ) == ["lcpl", "fairfax", "nypl"]
+
+
+class TestMultiLibraryFanOut:
+    """FR-B1: grouped fan-out response and per-library failure isolation."""
+
+    @staticmethod
+    def _async_client_for(mapping: dict[str, dict]) -> MagicMock:
+        """Build a mock ThunderClient whose search_async returns per-slug data."""
+        client = MagicMock()
+
+        async def _search_async(slug, params, async_client):
+            return mapping[slug]
+
+        client.search_async.side_effect = _search_async
+        return client
+
+    async def test_two_libraries_grouped(self) -> None:
+        """AC-B1.4/B1.6: results grouped per library, each block carries its slug."""
+        mapping = {
+            "lcpl": {
+                "items": [{"id": "a1", "title": "A"}],
+                "totalItems": 1,
+                "links": {"self": {"page": 1}, "last": {"page": 1}},
+            },
+            "fairfax": {
+                "items": [{"id": "b1", "title": "B"}],
+                "totalItems": 1,
+                "links": {"self": {"page": 1}, "last": {"page": 1}},
+            },
+        }
+        client = self._async_client_for(mapping)
+        result = await search_titles.handle_multi(
+            {"library_slugs": ["lcpl", "fairfax"], "include_facets": False}, client
+        )
+        assert "libraries" in result
+        slugs = [b["library_slug"] for b in result["libraries"]]
+        assert slugs == ["lcpl", "fairfax"]
+        assert result["libraries"][0]["titles"][0]["id"] == "a1"
+        assert result["libraries"][1]["titles"][0]["id"] == "b1"
+
+    async def test_single_entry_still_grouped(self) -> None:
+        """AC-B1.8: a single-entry library_slugs returns the grouped shape."""
+        mapping = {
+            "lcpl": {
+                "items": [{"id": "a1", "title": "A"}],
+                "totalItems": 1,
+                "links": {"self": {"page": 1}, "last": {"page": 1}},
+            }
+        }
+        client = self._async_client_for(mapping)
+        result = await search_titles.handle_multi({"library_slugs": ["lcpl"]}, client)
+        assert "libraries" in result
+        assert len(result["libraries"]) == 1
+        assert result["libraries"][0]["library_slug"] == "lcpl"
+
+    async def test_per_library_failure_isolated(self) -> None:
+        """AC-B1.5: one library's 404 yields an error block; the other returns titles."""
+        mapping = {
+            "lcpl": {
+                "items": [{"id": "a1", "title": "A"}],
+                "totalItems": 1,
+                "links": {"self": {"page": 1}, "last": {"page": 1}},
+            },
+            "badslug": {
+                "error": (
+                    "unknown library slug: badslug — check the slug is correct "
+                    "(e.g. lcpl, fairfax, nypl)"
+                )
+            },
+        }
+        client = self._async_client_for(mapping)
+        result = await search_titles.handle_multi({"library_slugs": ["lcpl", "badslug"]}, client)
+        blocks = {b["library_slug"]: b for b in result["libraries"]}
+        assert "titles" in blocks["lcpl"]
+        assert "error" in blocks["badslug"]
+        assert "badslug" in blocks["badslug"]["error"]
+        assert "titles" not in blocks["badslug"]

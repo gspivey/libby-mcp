@@ -86,7 +86,6 @@ def check_tools() -> None:
     tools = {
         "src.tools.search_titles": "handle",
         "src.tools.availability": "handle",
-        "src.tools.deep_link": "handle",
     }
     for module_name, expected_fn in tools.items():
         short = module_name.split(".")[-1]

@@ -7,10 +7,19 @@ the Title Object schema.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import TYPE_CHECKING, Any
+
+import httpx
 
 if TYPE_CHECKING:
     from src.thunder_client import ThunderClient
+
+logger = logging.getLogger(__name__)
+
+# Maximum number of libraries accepted in a single multi-library fan-out (AC-B1.12).
+MAX_LIBRARIES = 10
 
 # Format mapping: MCP value -> Thunder API value
 FORMAT_MAP = {
@@ -53,7 +62,21 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     # Call Thunder API
     response = client.search(library_slug, thunder_params)
 
-    # Check for client-level errors
+    return _build_result_block(library_slug, params, response)
+
+
+def _build_result_block(
+    library_slug: str, params: dict[str, Any], response: dict[str, Any]
+) -> dict[str, Any]:
+    """Shape a single library's Thunder response into a result block.
+
+    Shared by the single-library :func:`handle` path and the per-library
+    :func:`_search_one` fan-out path so both produce identical shapes. Returns
+    ``{error: ...}`` on client-level error or the invalid-slug heuristic; the
+    caller decides whether to raise (single) or embed the error in a per-library
+    block (multi).
+    """
+    # Check for client-level errors (includes the FR-A2 404 message)
     if "error" in response:
         return response
 
@@ -70,8 +93,14 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     under_hours = params.get("under_hours")
     filtered_items = _apply_client_filters(items, bisac_filter, under_hours)
 
-    # Normalize items into Title Objects
-    titles = [_normalize_item(item, library_slug) for item in filtered_items]
+    # Normalize items into Title Objects. Items with a missing/None id are
+    # dropped (AC-B3.3): _normalize_item returns None for them so they never
+    # surface with a malformed `.../media/` or `.../media/None` link.
+    titles = [
+        normalized
+        for item in filtered_items
+        if (normalized := _normalize_item(item, library_slug)) is not None
+    ]
 
     # Build pagination metadata (from server response, before client filtering)
     links = response.get("links", {})
@@ -90,6 +119,104 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     if params.get("include_facets"):
         result["facets"] = response.get("facets", {})
     return result
+
+
+def validate_library_slugs(slugs: list[str]) -> str | None:
+    """Validate a ``library_slugs`` list for multi-library fan-out (FR-B1).
+
+    Returns an error message string if invalid, else ``None``. Does NOT mutate
+    the input; callers obtain the cleaned/deduped list from
+    :func:`dedupe_library_slugs` after this passes.
+
+    Checks run in order (AC-B1.9–B1.12):
+    1. empty list -> ``library_slugs must not be empty``
+    2. any blank/whitespace entry -> ``library_slugs contains invalid entry: empty slug``
+    3. (dedupe happens separately, see :func:`dedupe_library_slugs`)
+    4. more than 10 (after dedupe) -> ``library_slugs exceeds maximum of 10 libraries``
+    """
+    if not slugs:
+        return "library_slugs must not be empty"
+    for entry in slugs:
+        if not isinstance(entry, str) or entry.strip() == "":
+            return "library_slugs contains invalid entry: empty slug"
+    if len(dedupe_library_slugs(slugs)) > MAX_LIBRARIES:
+        return "library_slugs exceeds maximum of 10 libraries"
+    return None
+
+
+def dedupe_library_slugs(slugs: list[str]) -> list[str]:
+    """Deduplicate slugs preserving first-seen order (AC-B1.11)."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for s in slugs:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+async def _search_one(
+    slug: str,
+    params: dict[str, Any],
+    client: "ThunderClient",
+    async_client: httpx.AsyncClient,
+) -> dict[str, Any]:
+    """Search a single library during fan-out, never raising (AC-B1.5).
+
+    Any failure (bad slug 404, timeout, unexpected error) is normalized into a
+    block ``{library_slug, error}`` so one bad library does not poison the
+    whole ``asyncio.gather``. On success returns the standard result block.
+    """
+    thunder_params = _build_thunder_params(params)
+    try:
+        response = await client.search_async(slug, thunder_params, async_client)
+    except Exception as e:  # defensive: search_async already maps known errors
+        logger.warning(
+            "fan_out_library_error",
+            extra={"library_slug": slug, "error": str(e)},
+        )
+        return {"library_slug": slug, "error": str(e)}
+
+    block = _build_result_block(slug, params, response)
+    if "error" in block:
+        # Per-library failure: tag with the slug and log for observability
+        # (NFR-5.1) without leaking into other libraries' blocks.
+        logger.warning(
+            "fan_out_library_error",
+            extra={"library_slug": slug, "error": block["error"]},
+        )
+        return {"library_slug": slug, "error": block["error"]}
+    return block
+
+
+async def _fan_out(
+    slugs: list[str], params: dict[str, Any], client: "ThunderClient"
+) -> list[dict[str, Any]]:
+    """Run per-library searches concurrently with ``asyncio.gather`` (NFR-2.1).
+
+    The ``AsyncClient`` is created here (per fan-out) so its connection pool is
+    bound to the current event loop and survives warm Lambda invocations.
+    """
+    from src.thunder_client import TIMEOUT_SECONDS, USER_AGENT
+
+    async with httpx.AsyncClient(
+        headers={"user-agent": USER_AGENT}, timeout=TIMEOUT_SECONDS
+    ) as async_client:
+        tasks = [_search_one(slug, params, client, async_client) for slug in slugs]
+        return await asyncio.gather(*tasks)
+
+
+async def handle_multi(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
+    """Multi-library fan-out search (FR-B1).
+
+    Assumes ``params['library_slugs']`` has already been validated and
+    deduplicated by the caller (the handler wrapper). Returns the grouped
+    response ``{libraries: [block, ...]}`` where each block carries its own
+    ``library_slug`` (AC-B1.4).
+    """
+    slugs: list[str] = params["library_slugs"]
+    results = await _fan_out(slugs, params, client)
+    return {"libraries": results}
 
 
 def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
@@ -210,9 +337,36 @@ def _hms_to_hours(duration_str: str) -> float | None:
         return None
 
 
-def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any]:
-    """Normalize a Thunder API item into the Title Object schema."""
-    item_id = str(item.get("id", ""))
+def _holds_per_copy(holds: int, owned: int) -> float | None:
+    """Holds-to-copies ratio, computed without a divide-by-zero crash (AC-B2.2).
+
+    - ``owned > 0``: ``round(holds / owned, 1)``.
+    - ``owned == 0`` (or falsy) and ``holds == 0``: ``0.0`` (no contention).
+    - ``owned == 0`` (or falsy) and ``holds > 0``: ``None`` (ratio not
+      meaningful — the library has holds but owns nothing).
+    """
+    if owned:
+        return round(holds / owned, 1)
+    # owned == 0 (or falsy)
+    return 0.0 if not holds else None
+
+
+def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] | None:
+    """Normalize a Thunder API item into the Title Object schema.
+
+    Returns ``None`` for an item with a missing or ``None`` id (AC-B3.3): such
+    an item would produce a broken ``.../media/`` or ``.../media/None`` link, so
+    it is dropped (with a logged warning) rather than emitted. Callers filter
+    out the ``None`` results before building the ``titles`` list.
+    """
+    raw_id = item.get("id")
+    if raw_id is None or str(raw_id).strip() == "":
+        logger.warning(
+            "search_item_missing_id",
+            extra={"library_slug": library_slug, "title": item.get("title", "")},
+        )
+        return None
+    item_id = str(raw_id)
 
     # Determine availability: isAvailable AND availableCopies >= 1
     is_available = bool(item.get("isAvailable")) and (item.get("availableCopies", 0) or 0) >= 1
@@ -232,6 +386,15 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any]:
     # Get hours for audiobooks
     hours = _get_hours(item)
 
+    # Folded availability signals (FR-B2): derived from the search item itself,
+    # no extra per-title availability call (AC-B2.4 / NFR-2.3).
+    holds_count = item.get("holdsCount", 0) or 0
+    owned_copies = item.get("ownedCopies", 0) or 0
+    holds_per_copy = _holds_per_copy(holds_count, owned_copies)
+    # estimatedWaitDays is not guaranteed on the /media search response; when
+    # absent the value is None (unknown), never 0 (AC-B2.3 / AC-B2.4).
+    estimated_wait_days = item.get("estimatedWaitDays")
+
     return {
         "id": item_id,
         "title": item.get("title", ""),
@@ -239,8 +402,10 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any]:
         "format": format_value,
         "available": is_available,
         "available_copies": item.get("availableCopies", 0) or 0,
-        "owned_copies": item.get("ownedCopies", 0) or 0,
-        "holds_count": item.get("holdsCount", 0) or 0,
+        "owned_copies": owned_copies,
+        "holds_count": holds_count,
+        "holds_per_copy": holds_per_copy,
+        "estimated_wait_days": estimated_wait_days,
         "hours": hours,
         "bisac_codes": item.get("bisacCodes", []),
         "link": f"https://{library_slug}.overdrive.com/media/{item_id}",
