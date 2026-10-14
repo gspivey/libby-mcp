@@ -135,7 +135,7 @@ Read `.kiro/specs/libby-mcp-v2/requirements.md`, `design.md`, and `tasks.md` in 
 then implement tasks `A1`, `A2`, `A3`, `A4`.
 
 - Spec: `.kiro/specs/libby-mcp-v2/` · tasks `A1`, `A2`, `A3`, `A4`
-- [ ] Complete · PR: --
+- [x] Complete · PR: #13
 
 ---
 
@@ -182,3 +182,13 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `1`, `2`, `3`, `4`, `5`, `6`
 - [x] Complete · PR: #6
+
+### 5. FastMCP migration: CDK GET route + deploy (PR B)
+
+- Spec: `.kiro/specs/mcp-protocol-upgrade/` · tasks `7`
+- [x] Complete (code; AC-4.3.1) · PR: #7 — deploy + AC-4.3.2/4.3.3 pending operator
+
+### 6. libby-mcp v2 — Group A: Targeted fixes (PR-A)
+
+- Spec: `.kiro/specs/libby-mcp-v2/` · tasks `A1`, `A2`, `A3`, `A4`
+- [x] Complete · PR: #13
