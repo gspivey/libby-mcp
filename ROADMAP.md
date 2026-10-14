@@ -159,6 +159,24 @@ then implement tasks `C1`, `C2`, `C3`. Depends on item 7 (PR-B merged).
 
 ---
 
+### 9. Local integration test harness (Docker + CI)
+
+Read `.kiro/specs/libby-mcp-local-integration/requirements.md`, `design.md`, and
+`tasks.md` in full, then implement tasks `1`–`7`. Adds a `Dockerfile.integration` that
+serves the ASGI app under uvicorn (no AWS/Lambda), a `docker-compose.integration.yml`
+for local runs, an MCP protocol test suite (`tests/integration/test_mcp_protocol.py`)
+gated by `RUN_LOCAL_INTEGRATION=1` and the `local_integration` marker, a secret-free
+`local-integration` CI job that runs on every PR, and a `make integration-test` target.
+Depends on item 8 (v2 Group C content enrichment merged) so the v2 enrichment fields
+(`holds_per_copy`, `estimated_wait_days`, `series_name`, `series_position`, `narrator`,
+`publisher`, `edition`, `is_abridged`, `hours`) exist in `search_titles` responses and
+the AC-3.7 assertions can cover them.
+
+- Spec: `.kiro/specs/libby-mcp-local-integration/` · tasks `1`, `2`, `3`, `4`, `5`, `6`, `7`
+- [ ] Complete · PR: --
+
+---
+
 ## Completed
 
 Items move here after they merge to `development`.
