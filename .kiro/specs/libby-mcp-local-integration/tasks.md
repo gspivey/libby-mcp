@@ -1,6 +1,6 @@
 # Tasks: Local Integration Test Harness (Docker + CI)
 
-> **Status: Complete (PR #PRNUM).** All tasks (1–7) implemented and merged to
+> **Status: Complete (PR #18).** All tasks (1–7) implemented and merged to
 > `development`. Deliverables: `Dockerfile.integration`, `docker-compose.integration.yml`,
 > `tests/integration/test_mcp_protocol.py` (9 protocol tests, all passing against the live
 > ASGI app + Thunder API), the `local_integration` pytest marker, the `local-integration`
