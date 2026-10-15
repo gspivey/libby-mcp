@@ -71,4 +71,5 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: marks tests that call real Thunder API (deselect with '-m not integration')",
+    "local_integration: MCP protocol tests against a running container (gated by RUN_LOCAL_INTEGRATION=1)",
 ]

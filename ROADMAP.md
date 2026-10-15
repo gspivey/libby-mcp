@@ -173,7 +173,7 @@ Depends on item 8 (v2 Group C content enrichment merged) so the v2 enrichment fi
 the AC-3.7 assertions can cover them.
 
 - Spec: `.kiro/specs/libby-mcp-local-integration/` · tasks `1`, `2`, `3`, `4`, `5`, `6`, `7`
-- [ ] Complete · PR: --
+- [x] Complete · PR: #PRNUM
 
 ---
 
@@ -220,3 +220,8 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp-v2/` · tasks `C1`, `C2`, `C3`
 - [x] Complete · PR: #17
+
+### 9. Local integration test harness (Docker + CI)
+
+- Spec: `.kiro/specs/libby-mcp-local-integration/` · tasks `1`, `2`, `3`, `4`, `5`, `6`, `7`
+- [x] Complete · PR: #PRNUM

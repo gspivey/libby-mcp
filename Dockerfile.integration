@@ -1,0 +1,29 @@
+# Integration test image: serves the production ASGI app factory
+# (src.handler:_build_app) under uvicorn with no AWS/Lambda dependency.
+# Used by docker-compose.integration.yml, `make integration-test`, and the
+# `local-integration` CI job. The LIBBY_MCP_API_KEY baked in here is a
+# non-secret test token scoped to a public, read-only catalog proxy.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Dependencies first for layer caching. requirements.txt carries the pinned
+# runtime deps (httpx, fastmcp/mcp, mangum); uvicorn is the test server and is
+# added explicitly (it is not a runtime dependency of the Lambda package).
+COPY requirements.txt pyproject.toml ./
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir "uvicorn[standard]>=0.30"
+
+# Application source only. src.handler resolves via PYTHONPATH=/app.
+COPY src/ ./src/
+
+ENV PYTHONPATH=/app
+ENV LIBBY_MCP_API_KEY=ci-test-key
+
+EXPOSE 8000
+
+# Single worker: StreamableHTTPSessionManager.run() may be called only once per
+# FastMCP instance, and _build_app() creates a fresh instance per factory call,
+# so one worker keeps exactly one instance alive per process.
+CMD ["uvicorn", "src.handler:_build_app", "--factory", \
+     "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
