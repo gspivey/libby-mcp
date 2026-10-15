@@ -3,6 +3,9 @@
 # are relative to ~/Development/libby-mcp/
 
 infra/
+tests/
+docs/
+.github/
 .git/
 .venv/
 __pycache__/

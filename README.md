@@ -92,10 +92,48 @@ make typecheck     # mypy strict
 make ci            # lint + typecheck + test (mirrors CI)
 make preflight     # validate + compliance + ci (full pre-push)
 make integration   # Live Thunder API tests (requires RUN_INTEGRATION=1)
+make integration-test  # Containerized MCP protocol suite (local harness)
 ```
 
 Integration tests hit the real Thunder API and are gated by `RUN_INTEGRATION=1`.
 They run on a daily schedule in CI, not on every PR.
+
+### Local integration harness (MCP protocol over HTTP)
+
+`make integration-test` exercises the full MCP protocol surface — the ASGI app,
+`AuthMiddleware`, FastMCP tool registration, and JSON-RPC request/response handling —
+against a running server, end to end with the live (public, read-only) Thunder API.
+It needs **no AWS, no Lambda, and no secrets**: a Docker image
+(`Dockerfile.integration`) serves the production ASGI app factory
+(`src.handler:_build_app`) under uvicorn, and the suite
+(`tests/integration/test_mcp_protocol.py`) drives it over HTTP with the non-secret
+test token `ci-test-key`.
+
+```bash
+# One command: build the image, start the container, run the suite, tear down.
+make integration-test
+
+# Or run the pieces by hand:
+docker compose -f docker-compose.integration.yml up -d --build
+RUN_LOCAL_INTEGRATION=1 MCP_ENDPOINT=http://localhost:8000/mcp MCP_API_KEY=ci-test-key \
+  pytest tests/integration/test_mcp_protocol.py -v -m local_integration
+docker compose -f docker-compose.integration.yml down -v
+```
+
+The suite is marked `-m local_integration` and additionally guarded by a module-level
+`skipif` on `RUN_LOCAL_INTEGRATION=1`, so it never runs under the unit (`make test`) or
+live-Thunder (`make integration`) commands. The endpoint and token are overridable via
+`MCP_ENDPOINT` / `MCP_API_KEY` so the same suite can target a bare `uvicorn` process or a
+remote server. In CI the `local-integration` job runs this suite on every PR.
+
+### Branch protection (operator step)
+
+The `local-integration` job is a required status check on `development`. After this
+feature merges, an operator must add the required status check named
+**`Local Integration Tests`** (the `name:` of the `local-integration` job) to the
+`development` branch protection rule, alongside the existing required checks
+(`lint`, `typecheck`, `test`). Applying the GitHub setting is a manual operator step;
+the workflow only defines the job.
 
 ## Project structure
 

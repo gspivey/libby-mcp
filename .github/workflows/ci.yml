@@ -72,11 +72,57 @@ jobs:
         env:
           RUN_INTEGRATION: "1"
 
+  local-integration:
+    name: Local Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build integration image
+        run: docker compose -f docker-compose.integration.yml build
+
+      - name: Start server
+        run: docker compose -f docker-compose.integration.yml up -d
+
+      - name: Wait for readiness (GET /mcp -> 405)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/mcp || true)
+            if [ "$code" = "405" ]; then echo "server up"; exit 0; fi
+            sleep 2
+          done
+          echo "server did not become ready"; exit 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install test deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Run MCP protocol tests
+        env:
+          RUN_LOCAL_INTEGRATION: "1"
+          MCP_ENDPOINT: http://localhost:8000/mcp
+          MCP_API_KEY: ci-test-key
+        run: pytest tests/integration/test_mcp_protocol.py -v -m local_integration
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.integration.yml logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.integration.yml down -v
+
   comment:
     name: PR Comment
     runs-on: ubuntu-latest
     if: always() && github.event_name == 'pull_request'
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, local-integration]
     permissions:
       contents: read
       pull-requests: write
@@ -87,7 +133,8 @@ jobs:
             const results = {
               lint: '${{ needs.lint.result }}',
               typecheck: '${{ needs.typecheck.result }}',
-              test: '${{ needs.test.result }}'
+              test: '${{ needs.test.result }}',
+              localIntegration: '${{ needs.local-integration.result }}'
             };
 
             const statusIcon = (s) => s === 'success' ? 'pass' : s === 'failure' ? 'FAIL' : s;
@@ -105,6 +152,7 @@ jobs:
               `| Lint (ruff) | ${statusIcon(results.lint)} |`,
               `| Type Check (mypy) | ${statusIcon(results.typecheck)} |`,
               `| Test (pytest) | ${statusIcon(results.test)} |`,
+              `| Local Integration Tests | ${statusIcon(results.localIntegration)} |`,
               '',
               `[View run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`,
             ].join('\n');

@@ -1,5 +1,14 @@
 # Tasks: Local Integration Test Harness (Docker + CI)
 
+> **Status: Complete (PR #18).** All tasks (1–7) implemented and merged to
+> `development`. Deliverables: `Dockerfile.integration`, `docker-compose.integration.yml`,
+> `tests/integration/test_mcp_protocol.py` (9 protocol tests, all passing against the live
+> ASGI app + Thunder API), the `local_integration` pytest marker, the `local-integration`
+> CI job (wired into the `comment` results table), the `make integration-test` target, and
+> the README branch-protection note naming the `Local Integration Tests` required check.
+> The `fairfax` slug (DD-4) was verified live (`totalItems > 0`) before implementing the
+> fan-out test. No `src/` changes.
+
 ## Workflow Policy
 
 This feature is a **single ROADMAP item / single PR**: "Local integration test harness
