@@ -14,9 +14,14 @@ v3 changes:
   owned titles are not masked. ``401``/``403``/``408``/``429``/``5xx``/timeout are
   always a top-level error (never probed).
 - D3: ``estimated_wait_days == 0`` whenever ``copies_available > 0``.
+- D7: ``get_availability`` fans out across ``library_slugs`` (grouped
+  ``{libraries: [...]}`` response), concurrently via ``asyncio.gather``, with
+  per-library failure isolation. The fan-out reuses the D1 async helpers — it
+  adds no new Thunder method.
 
-The single-library ``handle()`` and the (D7) multi-library path both route
-through the one always-async ``classify_and_fetch`` so the rules cannot diverge.
+The single-library ``handle()`` and the (D7) multi-library ``handle_multi()``
+both route through the one always-async ``classify_and_fetch`` so the rules
+cannot diverge.
 """
 
 from __future__ import annotations
@@ -185,3 +190,48 @@ async def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, A
     if block.get("error"):
         return {"library_slug": library_slug, "error": block["error"]}
     return {"library_slug": library_slug, **block}
+
+
+async def _availability_one(
+    slug: str, title_ids: Any, client: "ThunderClient", async_client: httpx.AsyncClient
+) -> dict[str, Any]:
+    """Fetch one library's availability block for the multi-library fan-out (D7).
+
+    Routes through the SAME ``classify_and_fetch`` as the single-library path
+    (HIGH-4), so title-id normalization, the non-empty rule, the ``400``/``404``
+    slug probe, and the multi-ID per-ID retry (HIGH-5) behave identically here.
+    A per-library failure (bad slug, timeout, or an unexpected exception) is
+    isolated to this block as an ``error`` field (AC-D7.5 / NFR-3.1).
+
+    Returns the flat block tagged with its slug: either
+    ``{library_slug, titles}`` or ``{library_slug, error}``.
+    """
+    try:
+        block = await classify_and_fetch(slug, title_ids, client, async_client)
+    except Exception as exc:  # noqa: BLE001 — isolate per-library failures (AC-D7.5)
+        return {"library_slug": slug, "error": str(exc)}
+    if block.get("error"):
+        return {"library_slug": slug, "error": block["error"]}
+    return {"library_slug": slug, **block}
+
+
+async def handle_multi(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
+    """Multi-library ``get_availability`` fan-out (FR-D7).
+
+    Assumes ``params['library_slugs']`` has already been normalized, validated,
+    and deduplicated by the handler wrapper. Runs the per-library availability
+    calls concurrently with ``asyncio.gather`` so N libraries complete in roughly
+    the time of the slowest one (AC-D7.7 / NFR-2.1), and returns the grouped
+    ``{libraries: [block, ...]}`` shape where each block carries its own
+    ``library_slug`` (AC-D7.3).
+    """
+    slugs: list[str] = params["library_slugs"]
+    title_ids = params.get("title_ids")
+
+    async with httpx.AsyncClient(
+        headers={"user-agent": USER_AGENT}, timeout=TIMEOUT_SECONDS
+    ) as async_client:
+        results = await asyncio.gather(
+            *[_availability_one(slug, title_ids, client, async_client) for slug in slugs]
+        )
+    return {"libraries": list(results)}

@@ -633,3 +633,122 @@ async def test_search_titles_exact_with_query_dispatches(client):
     assert resp.json()["result"].get("isError") is not True
     assert captured["params"].get("exact") is True
     assert captured["params"].get("query") == "The Mom Test"
+
+
+async def _call_availability(client, arguments, call_id):
+    return await client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": call_id,
+            "method": "tools/call",
+            "params": {"name": "get_availability", "arguments": arguments},
+        },
+        headers=BASE_HEADERS,
+    )
+
+
+async def test_get_availability_schema_has_library_slugs(client):
+    """AC-D7.1: get_availability exposes a library_slugs array parameter."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 30, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
+    props = tools["get_availability"]["inputSchema"]["properties"]
+    assert "library_slugs" in props, "REMEDIATION: get_availability must expose library_slugs"
+    assert "library_slug" in props
+
+
+async def test_get_availability_both_slug_forms_errors(client):
+    """AC-D7.2: providing both library_slug and library_slugs is a validation error."""
+    resp = await _call_availability(
+        client, {"library_slug": "lcpl", "library_slugs": ["lcpl"], "title_ids": ["1"]}, 31
+    )
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "not both" in result["content"][0]["text"]
+
+
+async def test_get_availability_neither_slug_form_errors(client):
+    """AC-D7.2: providing neither library_slug nor library_slugs is a validation error."""
+    resp = await _call_availability(client, {"title_ids": ["1"]}, 32)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "is required" in result["content"][0]["text"]
+
+
+async def test_get_availability_empty_slugs_errors(client):
+    """AC-D7.4: an empty library_slugs list is a validation error."""
+    resp = await _call_availability(client, {"library_slugs": [], "title_ids": ["1"]}, 33)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "must not be empty" in result["content"][0]["text"]
+
+
+async def test_get_availability_multi_library_e2e(client):
+    """AC-D7.3 / AC-D7.7: multi-library fan-out runs through the real FastMCP app.
+
+    Drives the registered async get_availability tool under a running event loop
+    (as Mangum does), proving the async fan-out does not raise
+    `asyncio.run() cannot be called from a running event loop`.
+    """
+
+    async def fake_avail(slug, ids, async_client):
+        return {"items": [{"id": "9876543", "availableCopies": 2, "ownedCopies": 3}]}
+
+    async def fake_lib(slug, async_client):
+        return {"id": 1, "preferredKey": slug}
+
+    with (
+        patch("src.thunder_client.ThunderClient.get_availability_async", side_effect=fake_avail),
+        patch("src.thunder_client.ThunderClient.get_library_async", side_effect=fake_lib),
+    ):
+        resp = await _call_availability(
+            client, {"library_slugs": ["lcpl", "fairfax"], "title_ids": ["9876543"]}, 34
+        )
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result.get("isError") is not True, result
+    payload = json.loads(result["content"][0]["text"])
+    slugs = [block["library_slug"] for block in payload["libraries"]]
+    assert slugs == ["lcpl", "fairfax"]
+    for block in payload["libraries"]:
+        assert block["titles"][0]["copies_owned"] == 3
+
+
+async def test_get_availability_multi_normalizes_and_dedupes_slugs(client):
+    """AC-D7.4 / AC-D2.4: ['LCPL','lcpl'] normalizes+dedupes to a single lcpl fan-out."""
+    captured: dict = {}
+
+    async def fake_handle_multi(params, client):
+        captured["slugs"] = list(params["library_slugs"])
+        return {"libraries": [{"library_slug": s, "titles": []} for s in params["library_slugs"]]}
+
+    with patch("src.handler.availability_impl.handle_multi", side_effect=fake_handle_multi):
+        resp = await _call_availability(
+            client, {"library_slugs": ["LCPL", "lcpl"], "title_ids": ["1"]}, 35
+        )
+    assert resp.status_code == 200
+    assert captured["slugs"] == ["lcpl"]
+
+
+async def test_get_availability_single_slug_flat_shape(client):
+    """AC-D7.6: the single library_slug path keeps the flat v2 shape."""
+
+    async def fake_handle(params, client):
+        return {"library_slug": params["library_slug"], "titles": []}
+
+    with patch("src.handler.availability_impl.handle", side_effect=fake_handle):
+        resp = await _call_availability(client, {"library_slug": "lcpl", "title_ids": ["1"]}, 36)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result.get("isError") is not True
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["library_slug"] == "lcpl"
+    assert "libraries" not in payload
