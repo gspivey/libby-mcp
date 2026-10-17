@@ -291,7 +291,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 **PR-D3 exit:** `make preflight` green; README tool list updated to three tools;
 checkboxes ticked; squash-merge.
 
-### Task D7: Multi-Library `get_availability` Fan-Out
+### Task D7: Multi-Library `get_availability` Fan-Out — [x] Done (PR #25)
 
 **Requirements:** FR-D7 (AC-D7.1–D7.7), NFR-2.1, NFR-3.1, NFR-7.1
 

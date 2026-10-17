@@ -189,26 +189,65 @@ def _make_mcp() -> FastMCP:
 
     @mcp.tool(
         description=(
-            "Get raw availability data for specific titles at a library. "
+            "Get raw availability data for specific titles at one or more libraries. "
             "Returns copies owned, copies available, holds count, and estimated wait days. "
             "A title the library does not own (or a malformed title ID) is returned with "
-            "status 'not_owned' rather than failing the whole request."
+            "status 'not_owned' rather than failing the whole request. Provide exactly one "
+            "of library_slug (single library, flat response) or library_slugs (fan-out "
+            "across up to 10 libraries, results grouped per library)."
         )
     )
     async def get_availability(
-        library_slug: Annotated[str, Field(description="Library identifier")],
         title_ids: Annotated[
             list[str | int],
             Field(description="Array of OverDrive title IDs to check"),
         ],
+        library_slug: Annotated[
+            str | None,
+            Field(description="Single library identifier (e.g., lcpl, fairfax, nypl)"),
+        ] = None,
+        library_slugs: Annotated[
+            list[str] | None,
+            Field(
+                description=(
+                    "Multiple library identifiers to check in parallel (e.g., "
+                    "['lcpl', 'fairfax', 'nypl']). Mutually exclusive with library_slug; "
+                    "max 10 libraries. Results are grouped per library."
+                )
+            ),
+        ] = None,
     ) -> dict[str, Any]:
-        # Normalize the slug at the input boundary (FR-D2). title_ids are
-        # normalized (int/padded → stripped string) inside the availability
-        # classifier, which is the authoritative coercion point (HIGH-4/HIGH-A).
-        slug = normalize_slug(library_slug)
-        result = await availability_impl.handle(
-            {"library_slug": slug, "title_ids": title_ids}, _thunder_client
-        )
+        # Normalize slugs at the input boundary (FR-D2) before validation/dedupe.
+        # title_ids are normalized (int/padded -> stripped string) inside the
+        # availability classifier, which is the authoritative coercion point
+        # (HIGH-4/HIGH-A).
+        if library_slug is not None:
+            library_slug = normalize_slug(library_slug)
+        if library_slugs is not None:
+            library_slugs = [normalize_slug(s) if isinstance(s, str) else s for s in library_slugs]
+
+        # One-of validation (AC-D7.2), same messages as search_titles.
+        has_slug = library_slug is not None
+        has_slugs = library_slugs is not None
+        if has_slug and has_slugs:
+            raise ToolError("provide either library_slug or library_slugs, not both")
+        if not has_slug and not has_slugs:
+            raise ToolError("library_slug or library_slugs is required")
+
+        if library_slugs is not None:
+            # Reuse the search_titles slug-list validation + dedupe (AC-D7.4).
+            err = search_titles_impl.validate_library_slugs(library_slugs)
+            if err is not None:
+                raise ToolError(err)
+            deduped = search_titles_impl.dedupe_library_slugs(library_slugs)
+            result = await availability_impl.handle_multi(
+                {"library_slugs": deduped, "title_ids": title_ids}, _thunder_client
+            )
+        else:
+            result = await availability_impl.handle(
+                {"library_slug": library_slug, "title_ids": title_ids}, _thunder_client
+            )
+
         if "error" in result:
             raise ToolError(result["error"])
         return result
