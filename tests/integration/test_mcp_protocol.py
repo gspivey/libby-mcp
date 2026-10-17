@@ -260,15 +260,19 @@ def test_initialize_returns_server_info(http_client: httpx.Client) -> None:
     ), f"capabilities should advertise 'tools', got {result.get('capabilities')}"
 
 
-def test_tools_list_has_two_tools(http_client: httpx.Client, initialized: dict[str, str]) -> None:
-    """AC-3.6 / DD-6: exactly search_titles and get_availability (no get_deep_link)."""
+def test_tools_list_has_expected_tools(
+    http_client: httpx.Client, initialized: dict[str, str]
+) -> None:
+    """AC-3.6 / AC-D5.1: search_titles, get_availability, lookup_library_slug
+    (and no get_deep_link). lookup_library_slug was added in v3 (D5)."""
     resp = mcp_call("tools/list", {}, client=http_client, _id=2)
     assert resp.status_code == 200, f"tools/list failed: HTTP {resp.status_code}"
     tools = resp.json()["result"]["tools"]
     names = {t["name"] for t in tools}
-    assert names == {"search_titles", "get_availability"}, (
-        "post-v2 the server must expose exactly {search_titles, get_availability} "
-        f"(get_deep_link was removed); got {sorted(names)}"
+    assert names == {"search_titles", "get_availability", "lookup_library_slug"}, (
+        "the server must expose exactly {search_titles, get_availability, "
+        "lookup_library_slug} (get_deep_link was removed in v2, lookup_library_slug "
+        f"added in v3); got {sorted(names)}"
     )
 
 
