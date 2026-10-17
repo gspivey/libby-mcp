@@ -86,6 +86,40 @@
       "formats": [
         {"id": "audiobook-overdrive", "duration": "03:00:00"}
       ]
+    },
+    {
+      "id": "8888888",
+      "title": "Edition-Derived Unabridged",
+      "subtitle": null,
+      "firstCreatorName": "Ed Reader",
+      "reserveId": "aaaa0000-1111-2222-3333-444455556666",
+      "isAvailable": true,
+      "availableCopies": 1,
+      "ownedCopies": 1,
+      "holdsCount": 0,
+      "estimatedWaitDays": 0,
+      "edition": "Unabridged",
+      "bisacCodes": ["FIC000000"],
+      "formats": [
+        {"id": "audiobook-overdrive", "duration": "05:00:00"}
+      ]
+    },
+    {
+      "id": "9999999",
+      "title": "Edition-Derived Abridged",
+      "subtitle": null,
+      "firstCreatorName": "Ab Reader",
+      "reserveId": "bbbb0000-1111-2222-3333-444455556666",
+      "isAvailable": false,
+      "availableCopies": 0,
+      "ownedCopies": 2,
+      "holdsCount": 4,
+      "estimatedWaitDays": 10,
+      "edition": "Abridged Edition",
+      "bisacCodes": ["FIC000000"],
+      "formats": [
+        {"id": "audiobook-overdrive", "duration": "02:30:00"}
+      ]
     }
   ],
   "totalItems": 843,

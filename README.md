@@ -8,7 +8,7 @@ recommendations or advisory logic. The LLM caller does the reasoning.
 
 | Tool | Description |
 |------|-------------|
-| `search_titles` | Search one or more libraries' OverDrive catalogs with filters (subjects, format, availability, creator, BISAC codes, duration, etc.). Each result includes a direct OverDrive `link`, folded availability signals (`holds_per_copy`, `estimated_wait_days`), content enrichment (`series_name`, `series_position`, `narrator`, `publisher`, `edition`, `is_abridged`), and copy/hold counts. Supports multi-library fan-out via `library_slugs`. |
+| `search_titles` | Search one or more libraries' OverDrive catalogs with filters (subjects, format, availability, creator, BISAC codes, duration, etc.). Each result includes a direct OverDrive `link`, folded availability signals (`holds_per_copy`, `estimated_wait_days`), content enrichment (`series_name`, `series_position`, `narrator`, `publisher`, `edition`, `is_abridged`), and copy/hold counts. Pass `exact=true` with a `query` for exact-title matching (no fuzzy fallback). Supports multi-library fan-out via `library_slugs`. |
 | `get_availability` | Get raw copy/hold counts for specific titles at a library |
 
 All tools accept a `library_slug` parameter (e.g., `lcpl`, `fairfax`, `nypl`) — any

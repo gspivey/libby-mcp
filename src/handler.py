@@ -103,6 +103,16 @@ def _make_mcp() -> FastMCP:
             str | None,
             Field(description="Full-text search on title+subtitle+description"),
         ] = None,
+        exact: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Exact-title mode. When true, only titles whose title matches "
+                    "`query` exactly (case-insensitive) are returned — no fuzzy "
+                    "fallback. Requires `query`. Defaults to false (fuzzy full-text)."
+                )
+            ),
+        ] = False,
         include_facets: Annotated[
             bool,
             Field(
@@ -123,6 +133,8 @@ def _make_mcp() -> FastMCP:
         # Build args dict from non-None values only, so a library_slugs-only
         # call never carries a stray library_slug=None into validation.
         args: dict[str, Any] = {"include_facets": include_facets}
+        if exact:
+            args["exact"] = True
         for k, v in {
             "library_slug": library_slug,
             "library_slugs": library_slugs,
@@ -149,6 +161,10 @@ def _make_mcp() -> FastMCP:
             raise ToolError("provide either library_slug or library_slugs, not both")
         if not has_slug and not has_slugs:
             raise ToolError("library_slug or library_slugs is required")
+
+        # Exact-title mode requires a query to match against (AC-D6.4).
+        if exact and "query" not in args:
+            raise ToolError("exact requires query")
 
         # Dispatch
         if has_slugs:

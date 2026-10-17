@@ -206,7 +206,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 
 **PR-D1 exit:** `make preflight` green; checkboxes ticked; squash-merge.
 
-### Task D4: Honest `is_abridged`
+### Task D4: Honest `is_abridged` — [x] Done (PR #23)
 
 **Requirements:** FR-D4 (AC-D4.1–D4.4)
 
@@ -228,7 +228,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 
 **Acceptance:** AC-D4.1–D4.4.
 
-### Task D6: Exact-Title Search Mode
+### Task D6: Exact-Title Search Mode — [x] Done (PR #23)
 
 **Requirements:** FR-D6 (AC-D6.1–D6.6)
 

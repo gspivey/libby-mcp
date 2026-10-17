@@ -241,7 +241,7 @@ Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
 full, then implement tasks `D4`, `D6` (honest `is_abridged`, exact-title search).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D4`, `D6`
-- [ ] Complete
+- [x] Complete · PR: #23
 - Depends-on: item 10 (PR-D1 merged)
 
 ### 12. libby-mcp v3 — Group D `lookup_library_slug` + directory cache (PR-D3)

@@ -340,7 +340,9 @@ def test_search_titles_multi_library(
 def test_get_availability_partial_batch(
     http_client: httpx.Client, initialized: dict[str, str]
 ) -> None:
-    """AC-3.11: a mixed batch returns per-title data; bogus id reported not_found."""
+    """AC-3.11 / AC-D1.1: a mixed batch returns per-title data; a not-owned id is
+    reported with status == 'not_owned' (the v3 shape; the legacy
+    {"error": "not_found"} per-title shape was removed in AC-D1.5)."""
     payload = with_retry(
         lambda: _call_tool(
             http_client,
@@ -358,8 +360,8 @@ def test_get_availability_partial_batch(
         assert key in valid, f"valid title must expose {key!r}, got {valid}"
     assert BOGUS_TITLE_ID in by_id, f"bogus id {BOGUS_TITLE_ID} missing from {payload}"
     assert (
-        by_id[BOGUS_TITLE_ID].get("error") == "not_found"
-    ), f"bogus id must be reported with error == 'not_found', got {by_id[BOGUS_TITLE_ID]}"
+        by_id[BOGUS_TITLE_ID].get("status") == "not_owned"
+    ), f"a not-owned id must be reported with status == 'not_owned', got {by_id[BOGUS_TITLE_ID]}"
 
 
 def test_auth_missing_bearer(http_client: httpx.Client) -> None:
