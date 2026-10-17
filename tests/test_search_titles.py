@@ -856,3 +856,353 @@ class TestSlugNormalization:
         """AC-D2.4: dedupe on already-normalized values collapses LCPL/lcpl → one."""
         # dedupe operates on normalized values; the handler normalizes upstream.
         assert search_titles.dedupe_library_slugs(["lcpl", "lcpl"]) == ["lcpl"]
+
+
+# ---------------------------------------------------------------------------
+# Group D — Honest is_abridged (FR-D4)
+#
+# D4 replaces the v2 "primary_fmt.get('isAbridged')" read (which fabricated
+# nothing but relied on a field absent from the live API) with an honest
+# _derive_abridged(primary_fmt, edition): the format-entry boolean wins when
+# present, else an "unabridged"/"abridged" token in the edition string decides,
+# else None (unknown) — never a fabricated False (AC-D4.1/D4.2).
+# ---------------------------------------------------------------------------
+
+
+class TestHonestAbridged:
+    """FR-D4: is_abridged is honest — derived or None, never a fabricated constant."""
+
+    def test_format_bool_true(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D4.1: a format-entry isAbridged=true yields True."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 1234567 has formats[0].isAbridged == true.
+        assert titles["1234567"]["is_abridged"] is True
+
+    def test_format_bool_false(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D4.1: a format-entry isAbridged=false yields False."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 9876543 has formats[0].isAbridged == false.
+        assert titles["9876543"]["is_abridged"] is False
+
+    def test_edition_derived_unabridged(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D4.1: with no format bool, an 'Unabridged' edition string yields False."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 8888888: edition 'Unabridged', no isAbridged on the format.
+        assert titles["8888888"]["is_abridged"] is False
+
+    def test_edition_derived_abridged(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D4.1: with no format bool, an 'Abridged' edition string yields True."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 9999999: edition 'Abridged Edition', no isAbridged on the format.
+        assert titles["9999999"]["is_abridged"] is True
+
+    def test_no_signal_is_none(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D4.2: no format bool and no edition token -> None (never False)."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # Item 5555555 (no edition) and item 7777777 (edition: null) -> None.
+        assert titles["5555555"]["is_abridged"] is None
+        assert titles["7777777"]["is_abridged"] is None
+
+    def test_never_fabricated_constant_across_fixture(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D4.4: is_abridged is not a hardcoded constant across the fixture set."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        values = {t["is_abridged"] for t in result["titles"]}
+        # The mixed fixture must produce more than one distinct value — a
+        # fabricated constant (always False / always None) would collapse this.
+        assert values == {True, False, None}
+
+    def test_derive_abridged_unit(self) -> None:
+        """AC-D4.1/D4.2: _derive_abridged resolves each source cleanly."""
+        d = search_titles._derive_abridged
+        # format-entry bool wins over everything
+        assert d({"isAbridged": True}, "Unabridged") is True
+        assert d({"isAbridged": False}, "Abridged") is False
+        # edition string (case-insensitive) when no format bool; 'unabridged'
+        # is checked before 'abridged' (substring containment order).
+        assert d({}, "Unabridged") is False
+        assert d({}, "UNABRIDGED Edition") is False
+        assert d({}, "Abridged") is True
+        assert d({}, "abridged") is True
+        # unknown -> None, never fabricated False
+        assert d({}, None) is None
+        assert d({}, "") is None
+        assert d({}, "Standard Edition") is None
+        assert d({"isAbridged": "yes"}, None) is None  # non-bool format value ignored
+
+
+# ---------------------------------------------------------------------------
+# Group D — Exact-title search mode (FR-D6)
+# ---------------------------------------------------------------------------
+
+
+class TestExactTitleSearch:
+    """FR-D6: exact=true returns only exact (case-insensitive) title matches."""
+
+    @staticmethod
+    def _page(items: list[dict], total: int, page: int, last: int) -> dict:
+        return {
+            "items": items,
+            "totalItems": total,
+            "links": {"self": {"page": page}, "last": {"page": last}},
+        }
+
+    def test_exact_filters_to_exact_match(self, thunder_client: MagicMock) -> None:
+        """AC-D6.2/D6.3: exact=true keeps only the exact (case-insensitive) title."""
+        thunder_client.search.return_value = self._page(
+            [
+                {"id": "1", "title": "The Mom Test"},
+                {"id": "2", "title": "The Mom Test Workbook"},
+                {"id": "3", "title": "Mom Test Notes"},
+            ],
+            total=3,
+            page=1,
+            last=1,
+        )
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "the mom test", "exact": True}, thunder_client
+        )
+        ids = [t["id"] for t in result["titles"]]
+        assert ids == ["1"]
+        assert result["filtered_count"] == 1
+
+    def test_exact_case_insensitive(self, thunder_client: MagicMock) -> None:
+        """AC-D6.2: comparison is title.strip().lower() == query.strip().lower()."""
+        thunder_client.search.return_value = self._page(
+            [{"id": "1", "title": "The Mom Test"}, {"id": "2", "title": "Other"}],
+            total=2,
+            page=1,
+            last=1,
+        )
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "  THE MOM TEST  ", "exact": True}, thunder_client
+        )
+        assert [t["id"] for t in result["titles"]] == ["1"]
+
+    def test_exact_requests_relevance_and_perpage_100(self, thunder_client: MagicMock) -> None:
+        """AC-D6.7: exact=true requests perPage=100 and sort=relevance (not availableFirst)."""
+        thunder_client.search.return_value = self._page(
+            [{"id": "1", "title": "The Mom Test"}], total=1, page=1, last=1
+        )
+        search_titles.handle(
+            {"library_slug": "lcpl", "query": "the mom test", "exact": True}, thunder_client
+        )
+        call_params = thunder_client.search.call_args[0][1]
+        assert call_params["perPage"] == "100"
+        assert call_params.get("sortBy") == "relevance"
+        assert "availableFirst" not in call_params
+
+    def test_exact_false_preserves_fuzzy(self, thunder_client: MagicMock) -> None:
+        """AC-D6.5: exact=false keeps every fuzzy match (v2 behavior)."""
+        thunder_client.search.return_value = self._page(
+            [
+                {"id": "1", "title": "The Mom Test"},
+                {"id": "2", "title": "The Mom Test Workbook"},
+            ],
+            total=2,
+            page=1,
+            last=1,
+        )
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "the mom test", "exact": False}, thunder_client
+        )
+        assert sorted(t["id"] for t in result["titles"]) == ["1", "2"]
+
+    def test_exact_omitted_preserves_fuzzy(self, thunder_client: MagicMock) -> None:
+        """AC-D6.5: omitting exact keeps every fuzzy match and uses availableFirst."""
+        thunder_client.search.return_value = self._page(
+            [
+                {"id": "1", "title": "The Mom Test"},
+                {"id": "2", "title": "The Mom Test Workbook"},
+            ],
+            total=2,
+            page=1,
+            last=1,
+        )
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "the mom test"}, thunder_client
+        )
+        assert len(result["titles"]) == 2
+        call_params = thunder_client.search.call_args[0][1]
+        assert call_params.get("availableFirst") == "true"
+
+    def test_exact_match_on_page_two(self, thunder_client: MagicMock) -> None:
+        """AC-D6.7: an exact match beyond page 1 is still found (paging up to 3)."""
+        page1 = self._page(
+            [{"id": f"p1-{i}", "title": f"Mom Test Variant {i}"} for i in range(3)],
+            total=5,
+            page=1,
+            last=2,
+        )
+        page2 = self._page(
+            [
+                {"id": "exact", "title": "The Mom Test"},
+                {"id": "p2-x", "title": "Mom Test Appendix"},
+            ],
+            total=5,
+            page=2,
+            last=2,
+        )
+        thunder_client.search.side_effect = [page1, page2]
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "The Mom Test", "exact": True}, thunder_client
+        )
+        assert [t["id"] for t in result["titles"]] == ["exact"]
+        # Two page fetches occurred (page 1 then page 2).
+        assert thunder_client.search.call_count == 2
+
+    def test_exact_stops_at_three_pages(self, thunder_client: MagicMock) -> None:
+        """AC-D6.7: paging is bounded at 3 pages; no match -> empty, <=3 fetches."""
+        no_match = self._page([{"id": "x", "title": "No Match Here"}], total=1000, page=1, last=50)
+        thunder_client.search.return_value = no_match
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "The Mom Test", "exact": True}, thunder_client
+        )
+        assert result["titles"] == []
+        assert thunder_client.search.call_count <= 3
+
+    def test_exact_no_extra_fetch_when_single_page(self, thunder_client: MagicMock) -> None:
+        """AC-D6.7: when the catalog has a single page, no further fetch is attempted."""
+        thunder_client.search.return_value = self._page(
+            [{"id": "x", "title": "Not It"}], total=1, page=1, last=1
+        )
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "The Mom Test", "exact": True}, thunder_client
+        )
+        assert result["titles"] == []
+        assert thunder_client.search.call_count == 1
+
+    def test_exact_paging_error_surfaces(self, thunder_client: MagicMock) -> None:
+        """AC-D6.7: an error fetching a later page surfaces as an error result."""
+        page1 = self._page([{"id": "x", "title": "Not It"}], total=5, page=1, last=3)
+        err = {"error": "Library catalog temporarily unavailable — try again"}
+        thunder_client.search.side_effect = [page1, err]
+        result = search_titles.handle(
+            {"library_slug": "lcpl", "query": "The Mom Test", "exact": True}, thunder_client
+        )
+        assert "error" in result
+        assert thunder_client.search.call_count == 2
+
+
+class TestExactTitleSearchMultiLibrary:
+    """FR-D6: exact filtering applies on the multi-library (library_slugs) path too."""
+
+    async def test_exact_filters_each_library_block(self) -> None:
+        """AC-D6.6: exact=true prunes each per-library block to exact matches."""
+        mapping = {
+            "lcpl": {
+                "items": [
+                    {"id": "a1", "title": "The Mom Test"},
+                    {"id": "a2", "title": "The Mom Test Workbook"},
+                ],
+                "totalItems": 2,
+                "links": {"self": {"page": 1}, "last": {"page": 1}},
+            },
+            "fairfax": {
+                "items": [
+                    {"id": "b1", "title": "Mom Test Notes"},
+                    {"id": "b2", "title": "the mom test"},
+                ],
+                "totalItems": 2,
+                "links": {"self": {"page": 1}, "last": {"page": 1}},
+            },
+        }
+
+        client = MagicMock()
+
+        async def _search_async(slug, params, async_client):
+            return mapping[slug]
+
+        client.search_async.side_effect = _search_async
+
+        result = await search_titles.handle_multi(
+            {
+                "library_slugs": ["lcpl", "fairfax"],
+                "query": "The Mom Test",
+                "exact": True,
+                "include_facets": False,
+            },
+            client,
+        )
+        blocks = {b["library_slug"]: b for b in result["libraries"]}
+        assert [t["id"] for t in blocks["lcpl"]["titles"]] == ["a1"]
+        assert [t["id"] for t in blocks["fairfax"]["titles"]] == ["b2"]
+
+    async def test_exact_page_two_within_library(self) -> None:
+        """AC-D6.7 (multi): a per-library exact match on page 2 is still found."""
+        pages = {
+            "lcpl": [
+                {
+                    "items": [{"id": "p1", "title": "The Mom Test Workbook"}],
+                    "totalItems": 2,
+                    "links": {"self": {"page": 1}, "last": {"page": 2}},
+                },
+                {
+                    "items": [{"id": "p2", "title": "The Mom Test"}],
+                    "totalItems": 2,
+                    "links": {"self": {"page": 2}, "last": {"page": 2}},
+                },
+            ]
+        }
+        client = MagicMock()
+
+        async def _search_async(slug, params, async_client):
+            # page is a string in the Thunder params; pop from the per-slug queue.
+            page = int(params.get("page", "1"))
+            return pages[slug][page - 1]
+
+        client.search_async.side_effect = _search_async
+
+        result = await search_titles.handle_multi(
+            {"library_slugs": ["lcpl"], "query": "The Mom Test", "exact": True},
+            client,
+        )
+        block = result["libraries"][0]
+        assert [t["id"] for t in block["titles"]] == ["p2"]
+        assert client.search_async.call_count == 2
+
+    async def test_exact_paging_error_isolated_to_block(self) -> None:
+        """AC-B1.5/D6.6: an error while paging a library surfaces as that block's error."""
+        client = MagicMock()
+
+        async def _search_async(slug, params, async_client):
+            page = int(params.get("page", "1"))
+            if page == 1:
+                return {
+                    "items": [{"id": "p1", "title": "Mom Test Notes"}],
+                    "totalItems": 5,
+                    "links": {"self": {"page": 1}, "last": {"page": 3}},
+                }
+            return {"error": "OverDrive service error (HTTP 500)", "status": 500}
+
+        client.search_async.side_effect = _search_async
+
+        result = await search_titles.handle_multi(
+            {"library_slugs": ["lcpl"], "query": "The Mom Test", "exact": True},
+            client,
+        )
+        block = result["libraries"][0]
+        assert "error" in block
+        assert "titles" not in block

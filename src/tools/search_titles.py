@@ -38,6 +38,27 @@ MATURITY_MAP = {
 # Narrowing filters that indicate a valid empty result (not a bad slug)
 NARROWING_FILTERS = {"subjects", "creator", "query", "bisac", "series_id"}
 
+# Exact-title search (FR-D6/AC-D6.7): when the first page yields no exact match
+# while more results exist, fetch further pages up to this cap (3 pages × 100
+# items = 300 items) and re-filter until a match is found or the cap is reached.
+EXACT_MAX_PAGES = 3
+
+
+def _apply_exact_filter(
+    titles: list[dict[str, Any]], params: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Keep only exact (case-insensitive) title matches when ``exact`` is set.
+
+    No-op unless both ``exact`` is truthy and a ``query`` is present (the
+    ``exact requires query`` precondition is enforced in the handler wrapper,
+    AC-D6.4). Comparison is ``title.strip().lower() == query.strip().lower()``
+    (AC-D6.2).
+    """
+    if not params.get("exact") or not params.get("query"):
+        return titles
+    q = str(params["query"]).strip().lower()
+    return [t for t in titles if str(t.get("title", "")).strip().lower() == q]
+
 
 def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     """Search a library's catalog with optional filters.
@@ -62,7 +83,52 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     # Call Thunder API
     response = client.search(library_slug, thunder_params)
 
-    return _build_result_block(library_slug, params, response)
+    result = _build_result_block(library_slug, params, response)
+
+    # Exact mode (FR-D6/AC-D6.7): if page 1 yielded no exact match while more
+    # results exist, fetch further pages (up to EXACT_MAX_PAGES) and re-filter
+    # until a match is found or the cap is reached.
+    if _needs_exact_paging(params, result):
+        result = _exact_page_sync(library_slug, params, result, client)
+
+    return result
+
+
+def _needs_exact_paging(params: dict[str, Any], result: dict[str, Any]) -> bool:
+    """True when exact mode must fetch more pages (empty page but more exist)."""
+    return (
+        bool(params.get("exact"))
+        and bool(params.get("query"))
+        and "error" not in result
+        and not result["titles"]
+        and result.get("total_items", 0) > 0
+        and result.get("total_pages", 1) > 1
+    )
+
+
+def _exact_page_sync(
+    library_slug: str,
+    params: dict[str, Any],
+    first_result: dict[str, Any],
+    client: "ThunderClient",
+) -> dict[str, Any]:
+    """Fetch pages 2..N (sync) for an exact search until a match or the cap.
+
+    Bounded at :data:`EXACT_MAX_PAGES` total pages (AC-D6.7). Returns the first
+    page's result block when no later page yields a match (an empty-but-valid
+    exact result), otherwise the matching page's block.
+    """
+    total_pages = first_result.get("total_pages", 1)
+    last_page = min(total_pages, EXACT_MAX_PAGES)
+    for page in range(2, last_page + 1):
+        page_params = {**params, "page": page}
+        response = client.search(library_slug, _build_thunder_params(page_params))
+        block = _build_result_block(library_slug, page_params, response)
+        if "error" in block:
+            return block
+        if block["titles"]:
+            return block
+    return first_result
 
 
 def _build_result_block(
@@ -101,6 +167,12 @@ def _build_result_block(
         for item in filtered_items
         if (normalized := _normalize_item(item, library_slug)) is not None
     ]
+
+    # Exact-title filter (FR-D6): when exact=true keep only titles whose
+    # normalized title equals the normalized query. Applied here so it covers
+    # both the single and multi-library (library_slugs) paths (AC-D6.6), after
+    # normalization and client filters, before pagination counts are finalized.
+    titles = _apply_exact_filter(titles, params)
 
     # Build pagination metadata (from server response, before client filtering)
     links = response.get("links", {})
@@ -186,7 +258,39 @@ async def _search_one(
             extra={"library_slug": slug, "error": block["error"]},
         )
         return {"library_slug": slug, "error": block["error"]}
+
+    # Exact mode (FR-D6/AC-D6.7) on the fan-out path: page further within this
+    # library until an exact match is found or the page cap is reached.
+    if _needs_exact_paging(params, block):
+        block = await _exact_page_async(slug, params, block, client, async_client)
+        if "error" in block:
+            logger.warning(
+                "fan_out_library_error",
+                extra={"library_slug": slug, "error": block["error"]},
+            )
+            return {"library_slug": slug, "error": block["error"]}
     return block
+
+
+async def _exact_page_async(
+    slug: str,
+    params: dict[str, Any],
+    first_result: dict[str, Any],
+    client: "ThunderClient",
+    async_client: httpx.AsyncClient,
+) -> dict[str, Any]:
+    """Async mirror of :func:`_exact_page_sync` for the fan-out path (AC-D6.7)."""
+    total_pages = first_result.get("total_pages", 1)
+    last_page = min(total_pages, EXACT_MAX_PAGES)
+    for page in range(2, last_page + 1):
+        page_params = {**params, "page": page}
+        response = await client.search_async(slug, _build_thunder_params(page_params), async_client)
+        block = _build_result_block(slug, page_params, response)
+        if "error" in block:
+            return block
+        if block["titles"]:
+            return block
+    return first_result
 
 
 async def _fan_out(
@@ -223,6 +327,8 @@ def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
     """Map MCP params to Thunder API query params."""
     thunder: dict[str, Any] = {}
 
+    exact = bool(params.get("exact"))
+
     # subjects -> repeated subject param (coerced to strings)
     if "subjects" in params:
         thunder["subject"] = [str(s) for s in params["subjects"]]
@@ -231,10 +337,12 @@ def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
     if "format" in params:
         thunder["format"] = FORMAT_MAP.get(params["format"], params["format"])
 
-    # available=true -> showOnlyAvailable=true; omitted -> availableFirst=true
+    # available=true -> showOnlyAvailable=true; omitted -> availableFirst=true.
+    # In exact mode (FR-D6/AC-D6.7) availability ordering is dropped so the
+    # relevance-ranked exact title is not pushed off page 1 by available copies.
     if params.get("available") is True:
         thunder["showOnlyAvailable"] = "true"
-    else:
+    elif not exact:
         thunder["availableFirst"] = "true"
 
     # creator -> creator (direct)
@@ -255,16 +363,24 @@ def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
             params["maturity_level"], params["maturity_level"]
         )
 
-    # sort_by -> sortBy (direct)
-    if "sort_by" in params:
+    # sort_by -> sortBy. Exact mode forces relevance ordering (AC-D6.7); an
+    # explicit caller sort_by otherwise wins.
+    if exact:
+        thunder["sortBy"] = "relevance"
+    elif "sort_by" in params:
         thunder["sortBy"] = params["sort_by"]
 
     # query -> query (direct)
     if "query" in params:
         thunder["query"] = params["query"]
 
-    # per_page -> perPage (clamp to max 100, default 24)
-    per_page = min(int(params.get("per_page", 24)), 100)
+    # per_page -> perPage. Exact mode fetches a full page (100) so the exact
+    # match is more likely to land on page 1 (AC-D6.7); otherwise clamp the
+    # caller value to max 100, default 24.
+    if exact:
+        per_page = 100
+    else:
+        per_page = min(int(params.get("per_page", 24)), 100)
     thunder["perPage"] = str(per_page)
 
     # page -> page (default 1)
@@ -402,6 +518,33 @@ def _extract_series(item: dict[str, Any]) -> tuple[str | None, float | None]:
     return series_name, series_position
 
 
+def _derive_abridged(primary_fmt: dict[str, Any], edition: str | None) -> bool | None:
+    """Honest ``is_abridged`` derivation (FR-D4).
+
+    Resolution order (AC-D4.1/D4.2):
+
+    1. The primary format entry's ``isAbridged`` when it is a real boolean.
+    2. Otherwise an abridged signal in the ``edition`` string — ``"unabridged"``
+       is checked before ``"abridged"`` because the former contains the latter
+       as a substring.
+    3. Otherwise ``None`` (unknown) — never fabricated as ``False``.
+
+    The field is kept in the schema (the design's recommended branch); when no
+    reliable source is present it is honestly ``None``, so a test can assert the
+    value is never a hardcoded constant across a mixed fixture (AC-D4.4).
+    """
+    raw = primary_fmt.get("isAbridged")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(edition, str):
+        e = edition.strip().lower()
+        if "unabridged" in e:
+            return False
+        if "abridged" in e:
+            return True
+    return None
+
+
 def _extract_narrators(item: dict[str, Any]) -> list[str]:
     """Extract narrator names from the Thunder ``creators`` array (FR-C2).
 
@@ -474,11 +617,12 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] |
     raw_edition = item.get("edition")
     edition = raw_edition if isinstance(raw_edition, str) else None
 
-    # is_abridged: isAbridged on the primary format entry — the same entry used
-    # for format/duration detection (AC-C3.3). The field is not present in the
-    # OpenAPI reference, so it resolves to None (unknown) against the live API,
-    # which is exactly the AC-C3.2/C3.4 default (never coerced to False).
-    is_abridged = primary_fmt.get("isAbridged")
+    # is_abridged: honest derivation (FR-D4). The format-entry isAbridged boolean
+    # wins when present; otherwise an "unabridged"/"abridged" token in the edition
+    # string decides; otherwise None (unknown) — never fabricated as False
+    # (AC-D4.1/D4.2). The field is not in the OpenAPI item shape, so against the
+    # live API it resolves via the edition string or to None.
+    is_abridged = _derive_abridged(primary_fmt, edition)
 
     # Folded availability signals (FR-B2): derived from the search item itself,
     # no extra per-title availability call (AC-B2.4 / NFR-2.3).
