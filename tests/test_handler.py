@@ -103,6 +103,69 @@ async def test_tools_list_contains_remaining_tools(client):
     assert "get_availability" in tool_names
 
 
+async def test_tools_list_contains_lookup_library_slug(client):
+    """AC-D5.1: lookup_library_slug is registered and appears in tools/list."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tool_names = [t["name"] for t in resp.json()["result"]["tools"]]
+    assert "lookup_library_slug" in tool_names
+    # The other two tools remain registered alongside it.
+    assert "search_titles" in tool_names
+    assert "get_availability" in tool_names
+
+
+async def test_lookup_library_slug_e2e(client):
+    """AC-D5.4: lookup_library_slug('Fairfax') runs through the real FastMCP app.
+
+    Drives the registered async tool under a running event loop (as Mangum does),
+    exercising the module-level SlugDirectory and concurrent paging.
+    """
+    import src.handler as handler_mod
+    from src.slug_directory import SlugDirectory
+
+    page = {
+        "items": [
+            {"preferredKey": "fairfax", "name": "Fairfax County Public Library"},
+            {"preferredKey": "lcpl", "name": "Loudoun County Public Library"},
+        ],
+        "totalItems": 2,
+    }
+
+    async def fake_list(page_num, per_page, async_client):
+        return page
+
+    fresh_directory = SlugDirectory(handler_mod._thunder_client)
+    with (
+        patch.object(handler_mod, "_slug_directory", fresh_directory),
+        patch(
+            "src.thunder_client.ThunderClient.list_libraries_async",
+            side_effect=fake_list,
+        ),
+    ):
+        resp = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {
+                    "name": "lookup_library_slug",
+                    "arguments": {"name": "Fairfax"},
+                },
+            },
+            headers=BASE_HEADERS,
+        )
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result.get("isError") is not True, result
+    payload = json.loads(result["content"][0]["text"])
+    assert "fairfax" in {m["slug"] for m in payload["matches"]}
+
+
 async def test_get_deep_link_not_registered(client):
     """AC-B3.1 / NFR-4.3: get_deep_link is retired and absent from tools/list."""
     resp = await client.post(

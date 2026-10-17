@@ -10,6 +10,7 @@ recommendations or advisory logic. The LLM caller does the reasoning.
 |------|-------------|
 | `search_titles` | Search one or more libraries' OverDrive catalogs with filters (subjects, format, availability, creator, BISAC codes, duration, etc.). Each result includes a direct OverDrive `link`, folded availability signals (`holds_per_copy`, `estimated_wait_days`), content enrichment (`series_name`, `series_position`, `narrator`, `publisher`, `edition`, `is_abridged`), and copy/hold counts. Pass `exact=true` with a `query` for exact-title matching (no fuzzy fallback). Supports multi-library fan-out via `library_slugs`. |
 | `get_availability` | Get raw copy/hold counts for specific titles at a library |
+| `lookup_library_slug` | Look up OverDrive library slugs by library name or partial name (case-insensitive). Use when you know a library's name (e.g. `Fairfax`) but need its slug (e.g. `fairfax`) for the other tools. Returns raw directory rows (slug + name); the directory is cached in-process with a 7-day TTL. |
 
 All tools accept a `library_slug` parameter (e.g., `lcpl`, `fairfax`, `nypl`) — any
 OverDrive library works.
@@ -142,9 +143,12 @@ src/                    Python source (Lambda function code)
   handler.py            Lambda entry point (FastMCP over Mangum)
   auth.py               Bearer token validation
   thunder_client.py     HTTP client for Thunder API
+  slug_directory.py     In-process TTL cache of the Thunder library directory
+  fallback_slugs.json   Bundled offline library-slug snapshot (directory fallback)
   tools/                MCP tool handlers
     search_titles.py    Catalog search with filtering, multi-library fan-out
     availability.py     Batch availability lookup
+    lookup_library_slug.py  Library-name -> slug lookup over the cached directory
 
 infra/                  AWS CDK stack (TypeScript)
   bin/libby-mcp.ts      CDK app entry point

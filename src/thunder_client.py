@@ -125,6 +125,44 @@ class ThunderClient:
         url = self._build_library_url(slug)
         return self._execute_get(url, slug=slug)
 
+    def list_libraries(self, page: int = 1, per_page: int = 100) -> dict[str, Any]:
+        """Fetch one page of the library directory (FR-D5).
+
+        Calls ``GET /v2/libraries?page={page}&perPage={per_page}`` (public, no
+        auth). ``perPage`` caps at 100 on the Thunder side. The directory has no
+        free-text name search, so name matching is done client-side over the
+        cached pages (see :mod:`src.slug_directory`).
+
+        Args:
+            page: 1-based page number.
+            per_page: Items per page (Thunder max 100).
+
+        Returns:
+            A paged ``PagedResponse<LibraryResponse>`` dict (``items``,
+            ``totalItems``, ``links``) on success, or ``{"error": ...}`` on failure.
+        """
+        url = self._build_libraries_url(page, per_page)
+        return self._execute_get(url)
+
+    async def list_libraries_async(
+        self, page: int, per_page: int, async_client: httpx.AsyncClient
+    ) -> dict[str, Any]:
+        """Async variant of :meth:`list_libraries` for concurrent paging (FR-D5).
+
+        The ``SlugDirectory`` loader fetches page 1 first (to read ``totalItems``)
+        then fans out the remaining pages with ``asyncio.gather``. The async
+        client is passed in (created per load, scoped to the current loop) for the
+        same reason as :meth:`search_async`.
+        """
+        url = self._build_libraries_url(page, per_page)
+        return await self._execute_get_async(url, async_client)
+
+    def _build_libraries_url(self, page: int, per_page: int) -> str:
+        """Build the library-directory endpoint URL with paging params."""
+        base = f"{BASE_URL}/v2/libraries"
+        query_string = urlencode({"page": page, "perPage": per_page})
+        return f"{base}?{query_string}"
+
     def _build_search_url(self, slug: str, params: dict[str, Any]) -> str:
         """Build the full search URL with query parameters."""
         base = f"{BASE_URL}/v2/libraries/{slug}/media"

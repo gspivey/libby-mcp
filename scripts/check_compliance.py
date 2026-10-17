@@ -86,6 +86,7 @@ def check_tools() -> None:
     tools = {
         "src.tools.search_titles": "handle",
         "src.tools.availability": "handle",
+        "src.tools.lookup_library_slug": "handle",
     }
     for module_name, expected_fn in tools.items():
         short = module_name.split(".")[-1]
@@ -99,6 +100,21 @@ def check_tools() -> None:
                 f"{module_name} missing function: {expected_fn}",
                 f"REMEDIATION: Define function {expected_fn} in {module_name.replace('.', '/')}.py",
             )
+
+
+def check_slug_directory() -> None:
+    """Validate the slug-directory cache module (FR-D5)."""
+    if not check_module_exists("src.slug_directory", "slug_directory"):
+        return
+    from src import slug_directory  # type: ignore[attr-defined]
+
+    if not hasattr(slug_directory, "SlugDirectory"):
+        record(
+            "slug_directory_class",
+            "FAIL",
+            "src.slug_directory missing SlugDirectory class",
+            "REMEDIATION: Define class SlugDirectory in src/slug_directory.py",
+        )
 
 
 def check_handler() -> None:
@@ -136,6 +152,7 @@ def main() -> int:
     check_thunder_client()
     check_auth()
     check_tools()
+    check_slug_directory()
     check_handler()
 
     # Print results
