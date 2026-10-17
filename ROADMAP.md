@@ -232,7 +232,7 @@ full, then implement tasks `D1`, `D2`, `D3` (`not_owned` per-title status, slug
 normalization, `estimated_wait_days==0`-when-available).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D1`, `D2`, `D3`
-- [ ] Complete
+- [x] Complete · PR: #21
 - Depends-on: item 9 (local integration harness merged)
 
 ### 11. libby-mcp v3 — Group D search honesty + exact mode (PR-D2)

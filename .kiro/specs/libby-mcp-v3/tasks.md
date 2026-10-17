@@ -64,7 +64,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 
 ## Group D — Bug Fixes
 
-### Task D1: `not_owned` Status in `get_availability`
+### Task D1: `not_owned` Status in `get_availability` — [x] Done (PR #21)
 
 **Requirements:** FR-D1 (AC-D1.1–D1.9)
 
@@ -167,7 +167,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 
 **Acceptance:** AC-D1.1–D1.9.
 
-### Task D2: Normalize Library Slugs on Input
+### Task D2: Normalize Library Slugs on Input — [x] Done (PR #21)
 
 **Requirements:** FR-D2 (AC-D2.1–D2.5)
 
@@ -186,7 +186,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 
 **Acceptance:** AC-D2.1–D2.5.
 
-### Task D3: `estimated_wait_days == 0` When Available
+### Task D3: `estimated_wait_days == 0` When Available — [x] Done (PR #21)
 
 **Requirements:** FR-D3 (AC-D3.1–D3.4)
 
@@ -811,7 +811,7 @@ full, then implement tasks `D1`, `D2`, `D3` (`not_owned` per-title status, slug
 normalization, `estimated_wait_days==0`-when-available).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D1`, `D2`, `D3`
-- [ ] Complete
+- [x] Complete · PR: #21
 - Depends-on: item 9 (local integration harness merged)
 
 ### 11. libby-mcp v3 — Group D search honesty + exact mode (PR-D2)
