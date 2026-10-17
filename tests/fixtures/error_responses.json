@@ -34,5 +34,57 @@
     "error_type": "not_found",
     "status_code": 404,
     "body": {"message": "Not Found"}
+  },
+  "availability_400": {
+    "description": "HIGH-3/HIGH-5: bulk-availability endpoint returns 400 (probe-triggering) — ambiguous between a bad title ID and a bad slug; disambiguated by GET /v2/libraries/{slug}.",
+    "error_type": "availability_bad_request",
+    "status_code": 400,
+    "body": {"message": "Bad Request"}
+  },
+  "availability_404": {
+    "description": "HIGH-3/HIGH-5: bulk-availability endpoint returns 404 (probe-triggering).",
+    "error_type": "availability_not_found",
+    "status_code": 404,
+    "body": {"message": "Not Found"}
+  },
+  "availability_429": {
+    "description": "HIGH-5: 429 on availability is a non-probed top-level error.",
+    "error_type": "availability_rate_limited",
+    "status_code": 429,
+    "body": {"message": "Rate limit exceeded"}
+  },
+  "availability_401": {
+    "description": "HIGH-5: 401 on availability is a non-probed top-level error.",
+    "error_type": "availability_unauthorized",
+    "status_code": 401,
+    "body": {"message": "Unauthorized"}
+  },
+  "availability_403": {
+    "description": "HIGH-5: 403 on availability is a non-probed top-level error.",
+    "error_type": "availability_forbidden",
+    "status_code": 403,
+    "body": {"message": "Forbidden"}
+  },
+  "availability_408": {
+    "description": "HIGH-5: 408 on availability is a non-probed top-level error.",
+    "error_type": "availability_request_timeout",
+    "status_code": 408,
+    "body": {"message": "Request Timeout"}
+  },
+  "library_probe_4xx": {
+    "description": "HIGH-3: GET /v2/libraries/{slug} returns a 4xx — confirms the slug itself is bad (bad-slug probe branch).",
+    "error_type": "library_not_found",
+    "status_code": 404,
+    "body": {"message": "Not Found"}
+  },
+  "library_probe_ok": {
+    "description": "HIGH-3: GET /v2/libraries/{slug} returns a valid LibraryResponse — the slug is fine, so a 400/404 on availability means the title(s) were rejected (slug-OK branch).",
+    "error_type": "library_ok",
+    "status_code": 200,
+    "body": {
+      "id": 1,
+      "preferredKey": "lcpl",
+      "name": "Loudoun County Public Library"
+    }
   }
 }

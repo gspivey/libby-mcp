@@ -16,5 +16,39 @@
       "estimatedWaitDays": 14,
       "isAvailable": false
     }
-  ]
+  ],
+  "partial_items_note": "D1/HIGH-3: a two-ID request where Thunder returns only the owned title; the second requested ID is absent from items[] (not-owned).",
+  "partial": {
+    "items": [
+      {
+        "id": "9876543",
+        "availableCopies": 2,
+        "ownedCopies": 3,
+        "holdsCount": 0,
+        "estimatedWaitDays": 0,
+        "isAvailable": true
+      }
+    ]
+  },
+  "d3_available_with_nonzero_wait_note": "D3/AC-D3.1: availableCopies>0 but a nonzero raw estimatedWaitDays — the correction must force estimated_wait_days to 0.",
+  "d3_available_with_nonzero_wait": {
+    "items": [
+      {
+        "id": "9876543",
+        "availableCopies": 1,
+        "ownedCopies": 4,
+        "holdsCount": 2,
+        "estimatedWaitDays": 7,
+        "isAvailable": true
+      },
+      {
+        "id": "1234567",
+        "availableCopies": 0,
+        "ownedCopies": 5,
+        "holdsCount": 9,
+        "estimatedWaitDays": 21,
+        "isAvailable": false
+      }
+    ]
+  }
 }

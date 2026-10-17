@@ -165,7 +165,8 @@ class TestHumanReadable404:
             "error": (
                 "unknown library slug: badslug — check the slug is correct "
                 "(e.g. lcpl, fairfax, nypl)"
-            )
+            ),
+            "status": 404,
         }
 
     def test_availability_404_names_slug(self) -> None:
@@ -178,7 +179,8 @@ class TestHumanReadable404:
             "error": (
                 "unknown library slug: nope — check the slug is correct "
                 "(e.g. lcpl, fairfax, nypl)"
-            )
+            ),
+            "status": 404,
         }
 
     def test_non_404_keeps_generic_message(self) -> None:
@@ -194,7 +196,7 @@ class TestHumanReadable404:
             )
             mock_get.return_value = mock_response
             result = client.search("lcpl", {})
-        assert result == {"error": "OverDrive service error (HTTP 503)"}
+        assert result == {"error": "OverDrive service error (HTTP 503)", "status": 503}
 
     def test_timeout_unchanged_by_404_handling(self) -> None:
         """AC-A2.4: timeout path is unchanged."""
@@ -216,7 +218,8 @@ class TestHumanReadable404:
         assert result == {
             "error": (
                 "unknown library slug:  — check the slug is correct " "(e.g. lcpl, fairfax, nypl)"
-            )
+            ),
+            "status": 404,
         }
 
 
@@ -256,5 +259,133 @@ class TestAsyncSearch:
             "error": (
                 "unknown library slug: badslug — check the slug is correct "
                 "(e.g. lcpl, fairfax, nypl)"
-            )
+            ),
+            "status": 404,
         }
+
+
+class TestErrorStatusField:
+    """HIGH-3: HTTP error dicts carry the numeric `status`; timeouts do not."""
+
+    @pytest.mark.parametrize("status", [400, 404, 429, 401, 403, 408, 500, 503])
+    def test_http_error_includes_status(self, status: int) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_response = MagicMock()
+            mock_response.status_code = status
+            mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "err", request=MagicMock(), response=mock_response
+            )
+            mock_get.return_value = mock_response
+            # Use a bare search so the slug-404 branch does not fire for 404.
+            result = client.search("lcpl", {})
+        assert result.get("status") == status
+        assert "error" in result
+
+    def test_timeout_has_no_status(self) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.side_effect = httpx.TimeoutException("timed out")
+            result = client.search("lcpl", {})
+        assert "status" not in result
+
+
+class TestAsyncAvailabilityAndLibrary:
+    """HIGH-3: async availability + slug-probe helpers land in Task D1 / PR-D1."""
+
+    async def test_get_availability_async_returns_json(self) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        payload = {"items": [{"id": "123", "availableCopies": 1}]}
+        with patch("httpx.AsyncClient.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value=payload),
+                raise_for_status=MagicMock(),
+            )
+            async with httpx.AsyncClient() as ac:
+                result = await client.get_availability_async("lcpl", ["123"], ac)
+        assert result == payload
+
+    async def test_get_availability_async_url_shape(self) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        with patch("httpx.AsyncClient.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value={"items": []}),
+                raise_for_status=MagicMock(),
+            )
+            async with httpx.AsyncClient() as ac:
+                await client.get_availability_async("lcpl", ["12345", "67890"], ac)
+            call_url = mock_get.call_args[0][0]
+        assert "/v2/libraries/lcpl/media/availability" in call_url
+        assert "titleIds=12345" in call_url
+        assert "titleIds=67890" in call_url
+
+    async def test_get_availability_async_400_carries_status(self) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Bad Request", request=MagicMock(), response=mock_response
+        )
+        with patch("httpx.AsyncClient.get", return_value=mock_response):
+            async with httpx.AsyncClient() as ac:
+                result = await client.get_availability_async("lcpl", ["123"], ac)
+        assert result.get("status") == 400
+
+    async def test_get_library_async_returns_json(self) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        payload = {"id": 1, "preferredKey": "lcpl", "name": "LCPL"}
+        with patch("httpx.AsyncClient.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value=payload),
+                raise_for_status=MagicMock(),
+            )
+            async with httpx.AsyncClient() as ac:
+                result = await client.get_library_async("lcpl", ac)
+            call_url = mock_get.call_args[0][0]
+        assert result == payload
+        assert call_url.endswith("/v2/libraries/lcpl")
+
+    async def test_get_library_async_404_carries_status(self) -> None:
+        import httpx
+
+        client = thunder_client.ThunderClient()
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Not Found", request=MagicMock(), response=mock_response
+        )
+        with patch("httpx.AsyncClient.get", return_value=mock_response):
+            async with httpx.AsyncClient() as ac:
+                result = await client.get_library_async("badslug", ac)
+        assert "error" in result
+        assert result.get("status") == 404
+
+    def test_get_library_sync_mirror(self) -> None:
+        """A sync get_library mirror exists (unused by the availability layer)."""
+        client = thunder_client.ThunderClient()
+        payload = {"id": 1, "preferredKey": "lcpl"}
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value=payload),
+                raise_for_status=MagicMock(),
+            )
+            result = client.get_library("lcpl")
+            call_url = mock_get.call_args[0][0]
+        assert result == payload
+        assert call_url.endswith("/v2/libraries/lcpl")

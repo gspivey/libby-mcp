@@ -21,6 +21,7 @@ from src.auth import AuthMiddleware
 from src.thunder_client import ThunderClient
 from src.tools import availability as availability_impl
 from src.tools import search_titles as search_titles_impl
+from src.tools._slugs import normalize_slug
 
 # Module-level -- reused across warm Lambda invocations
 _thunder_client = ThunderClient()
@@ -112,6 +113,13 @@ def _make_mcp() -> FastMCP:
             ),
         ] = False,
     ) -> dict[str, Any]:
+        # Normalize slugs at the input boundary (FR-D2): lowercase + trim before
+        # they are built into args, validated, deduped, or echoed into responses.
+        if library_slug is not None:
+            library_slug = normalize_slug(library_slug)
+        if library_slugs is not None:
+            library_slugs = [normalize_slug(s) if isinstance(s, str) else s for s in library_slugs]
+
         # Build args dict from non-None values only, so a library_slugs-only
         # call never carries a stray library_slug=None into validation.
         args: dict[str, Any] = {"include_facets": include_facets}
@@ -160,18 +168,24 @@ def _make_mcp() -> FastMCP:
     @mcp.tool(
         description=(
             "Get raw availability data for specific titles at a library. "
-            "Returns copies owned, copies available, holds count, and estimated wait days."
+            "Returns copies owned, copies available, holds count, and estimated wait days. "
+            "A title the library does not own (or a malformed title ID) is returned with "
+            "status 'not_owned' rather than failing the whole request."
         )
     )
-    def get_availability(
+    async def get_availability(
         library_slug: Annotated[str, Field(description="Library identifier")],
         title_ids: Annotated[
             list[str | int],
             Field(description="Array of OverDrive title IDs to check"),
         ],
     ) -> dict[str, Any]:
-        result = availability_impl.handle(
-            {"library_slug": library_slug, "title_ids": title_ids}, _thunder_client
+        # Normalize the slug at the input boundary (FR-D2). title_ids are
+        # normalized (int/padded → stripped string) inside the availability
+        # classifier, which is the authoritative coercion point (HIGH-4/HIGH-A).
+        slug = normalize_slug(library_slug)
+        result = await availability_impl.handle(
+            {"library_slug": slug, "title_ids": title_ids}, _thunder_client
         )
         if "error" in result:
             raise ToolError(result["error"])
