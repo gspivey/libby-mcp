@@ -340,7 +340,7 @@ def test_search_titles_multi_library(
 def test_get_availability_partial_batch(
     http_client: httpx.Client, initialized: dict[str, str]
 ) -> None:
-"""AC-3.11 / AC-D1.1–D1.5: a mixed batch returns per-title data; a bogus id
+    """AC-3.11 / AC-D1.1–D1.5: a mixed batch returns per-title data; a bogus id
     is reported with status 'not_owned' (the v3 D1 shape; the legacy
     error:'not_found' per-title shape was removed in PR-D1)."""
     payload = with_retry(
