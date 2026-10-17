@@ -777,3 +777,82 @@ class TestDurationAndAbridged:
         title = result["titles"][0]
         assert title["is_abridged"] is None
         assert title["hours"] is None
+
+
+class TestEstimatedWaitDaysCorrection:
+    """FR-D3: estimated_wait_days folded correction (AC-D3.3)."""
+
+    def test_available_title_wait_forced_zero(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D3.3: available_copies > 0 → estimated_wait_days == 0, even with a
+        nonzero raw estimatedWaitDays."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # item 5555555: availableCopies 1, raw estimatedWaitDays 7 → corrected 0
+        assert titles["5555555"]["available_copies"] == 1
+        assert titles["5555555"]["estimated_wait_days"] == 0
+
+    def test_not_available_title_wait_passthrough(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D3.3: not available → raw value passes through."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        titles = {t["id"]: t for t in result["titles"]}
+        # item 1234567: availableCopies 0, raw estimatedWaitDays 14 → unchanged
+        assert titles["1234567"]["available_copies"] == 0
+        assert titles["1234567"]["estimated_wait_days"] == 14
+
+    def test_not_available_absent_wait_is_none(self, thunder_client: MagicMock) -> None:
+        """AC-D3.3: not available + absent estimatedWaitDays → None (v2 rule kept)."""
+        thunder_client.search.return_value = {
+            "items": [
+                {"id": "1", "title": "X", "ownedCopies": 2, "holdsCount": 1, "availableCopies": 0}
+            ],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        assert result["titles"][0]["estimated_wait_days"] is None
+
+    def test_keys_on_copies_not_is_available(self, thunder_client: MagicMock) -> None:
+        """AC-D3.4: correction keys on available_copies, not isAvailable alone."""
+        thunder_client.search.return_value = {
+            "items": [
+                {
+                    "id": "1",
+                    "title": "X",
+                    "ownedCopies": 2,
+                    "holdsCount": 1,
+                    "availableCopies": 3,
+                    "isAvailable": False,
+                    "estimatedWaitDays": 9,
+                }
+            ],
+            "totalItems": 1,
+            "links": {"self": {"page": 1}, "last": {"page": 1}},
+        }
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        # available_copies > 0 → corrected to 0 regardless of isAvailable=False
+        assert result["titles"][0]["estimated_wait_days"] == 0
+
+
+class TestSlugNormalization:
+    """FR-D2: library slugs normalized at the input boundary (AC-D2.1–D2.4)."""
+
+    def test_single_slug_lowercased_in_response_and_link(
+        self, thunder_client: MagicMock, sample_search_response: dict
+    ) -> None:
+        """AC-D2.2: handle receives an already-normalized slug (lowercase host)."""
+        thunder_client.search.return_value = sample_search_response
+        result = search_titles.handle({"library_slug": "lcpl"}, thunder_client)
+        assert result["library_slug"] == "lcpl"
+        for t in result["titles"]:
+            assert t["link"].startswith("https://lcpl.overdrive.com/media/")
+
+    def test_dedupe_after_normalization(self) -> None:
+        """AC-D2.4: dedupe on already-normalized values collapses LCPL/lcpl → one."""
+        # dedupe operates on normalized values; the handler normalizes upstream.
+        assert search_titles.dedupe_library_slugs(["lcpl", "lcpl"]) == ["lcpl"]

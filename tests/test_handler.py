@@ -189,8 +189,15 @@ async def test_search_titles_mocked(client):
 
 
 async def test_get_availability_mocked(client):
-    mock_result = {"items": [{"titleId": "1", "copiesOwned": 3, "copiesAvailable": 1}]}
-    with patch("src.handler.availability_impl.handle", return_value=mock_result):
+    mock_result = {
+        "library_slug": "lcpl",
+        "titles": [{"title_id": "1", "copies_owned": 3, "copies_available": 1}],
+    }
+
+    async def fake_handle(params, client):
+        return mock_result
+
+    with patch("src.handler.availability_impl.handle", side_effect=fake_handle):
         resp = await client.post(
             "/mcp",
             json={
@@ -388,3 +395,138 @@ async def test_search_titles_empty_slugs_errors(client):
     result = resp.json()["result"]
     assert result["isError"] is True
     assert "must not be empty" in result["content"][0]["text"]
+
+
+async def test_get_availability_integer_id_e2e(client):
+    """HIGH-A / AC-D1.8: an integer title_id is accepted by the tool schema and
+    coerced to a string before the Thunder call, driven through the FastMCP app.
+
+    This proves the coercion happens at the FastMCP tool boundary (the wrapper
+    declares `title_ids: list[str | int]`), not only inside handle().
+    """
+    captured: dict = {}
+
+    async def fake_avail(slug, ids, async_client):
+        captured["ids"] = list(ids)
+        return {"items": [{"id": "9876543", "availableCopies": 2, "ownedCopies": 3}]}
+
+    async def fake_lib(slug, async_client):
+        return {"id": 1, "preferredKey": slug}
+
+    with (
+        patch("src.thunder_client.ThunderClient.get_availability_async", side_effect=fake_avail),
+        patch("src.thunder_client.ThunderClient.get_library_async", side_effect=fake_lib),
+    ):
+        resp = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 20,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_availability",
+                    "arguments": {"library_slug": "lcpl", "title_ids": [9876543]},
+                },
+            },
+            headers=BASE_HEADERS,
+        )
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result.get("isError") is not True, result
+    payload = json.loads(result["content"][0]["text"])
+    # The integer was coerced to the string "9876543" before the Thunder call.
+    assert captured["ids"] == ["9876543"]
+    assert payload["titles"][0]["title_id"] == "9876543"
+
+
+async def test_get_availability_schema_accepts_int_ids(client):
+    """HIGH-A: the get_availability tool schema admits integer title IDs."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 21, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
+    schema = tools["get_availability"]["inputSchema"]["properties"]["title_ids"]
+    blob = json.dumps(schema)
+    # list[str | int] serializes to an array whose items allow both types.
+    assert "integer" in blob and "string" in blob
+
+
+async def test_get_availability_normalizes_slug(client):
+    """AC-D2.1: the get_availability wrapper normalizes the slug before dispatch."""
+    captured: dict = {}
+
+    async def fake_handle(params, client):
+        captured["slug"] = params["library_slug"]
+        return {"library_slug": params["library_slug"], "titles": []}
+
+    with patch("src.handler.availability_impl.handle", side_effect=fake_handle):
+        resp = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 22,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_availability",
+                    "arguments": {"library_slug": " LCPL ", "title_ids": ["1"]},
+                },
+            },
+            headers=BASE_HEADERS,
+        )
+    assert resp.status_code == 200
+    assert captured["slug"] == "lcpl"
+
+
+async def test_search_titles_normalizes_single_slug(client):
+    """AC-D2.1/D2.2: the search_titles wrapper normalizes a single slug."""
+    captured: dict = {}
+
+    def fake_handle(params, client):
+        captured["slug"] = params["library_slug"]
+        return {"library_slug": params["library_slug"], "titles": []}
+
+    with patch("src.handler.search_titles_impl.handle", side_effect=fake_handle):
+        resp = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 23,
+                "method": "tools/call",
+                "params": {
+                    "name": "search_titles",
+                    "arguments": {"library_slug": "LCPL"},
+                },
+            },
+            headers=BASE_HEADERS,
+        )
+    assert resp.status_code == 200
+    assert captured["slug"] == "lcpl"
+
+
+async def test_search_titles_normalizes_and_dedupes_slugs(client):
+    """AC-D2.4: ['LCPL','lcpl'] normalizes+dedupes to a single lcpl fan-out."""
+    captured: dict = {}
+
+    async def fake_handle_multi(params, client):
+        captured["slugs"] = list(params["library_slugs"])
+        return {"libraries": [{"library_slug": s, "titles": []} for s in params["library_slugs"]]}
+
+    with patch("src.handler.search_titles_impl.handle_multi", side_effect=fake_handle_multi):
+        resp = await client.post(
+            "/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 24,
+                "method": "tools/call",
+                "params": {
+                    "name": "search_titles",
+                    "arguments": {"library_slugs": ["LCPL", "lcpl"]},
+                },
+            },
+            headers=BASE_HEADERS,
+        )
+    assert resp.status_code == 200
+    assert captured["slugs"] == ["lcpl"]

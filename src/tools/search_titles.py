@@ -486,8 +486,16 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] |
     owned_copies = item.get("ownedCopies", 0) or 0
     holds_per_copy = _holds_per_copy(holds_count, owned_copies)
     # estimatedWaitDays is not guaranteed on the /media search response; when
-    # absent the value is None (unknown), never 0 (AC-B2.3 / AC-B2.4).
-    estimated_wait_days = item.get("estimatedWaitDays")
+    # absent the value is None (unknown), never 0 (AC-B2.3 / AC-B2.4). D3
+    # correction (AC-D3.3/D3.4): when a copy is available (available_copies > 0),
+    # the wait is forced to 0 regardless of the noisy raw value; otherwise the
+    # raw value (or None when absent) passes through — keying on copy counts, not
+    # isAvailable alone.
+    available_copies = item.get("availableCopies", 0) or 0
+    if available_copies > 0:
+        estimated_wait_days: Any = 0
+    else:
+        estimated_wait_days = item.get("estimatedWaitDays")
 
     return {
         "id": item_id,

@@ -84,6 +84,47 @@ class ThunderClient:
         url = self._build_availability_url(slug, title_ids)
         return self._execute_get(url, slug=slug)
 
+    async def get_availability_async(
+        self, slug: str, title_ids: list[str], async_client: httpx.AsyncClient
+    ) -> dict[str, Any]:
+        """Async bulk availability lookup (FR-D1 / HIGH-3).
+
+        Awaited by ``availability.classify_and_fetch`` for BOTH the single-library
+        ``handle()`` (now async) and the multi-library fan-out. The async client is
+        passed in (created per fan-out, scoped to the current loop) for the same
+        reason as :meth:`search_async`.
+
+        Args:
+            slug: Library identifier.
+            title_ids: List of (numeric) title ID strings.
+            async_client: An ``httpx.AsyncClient`` scoped to the current loop.
+
+        Returns:
+            Parsed JSON response with items array, or an error dict carrying the
+            numeric ``status`` on an HTTP error.
+        """
+        url = self._build_availability_url(slug, title_ids)
+        return await self._execute_get_async(url, async_client, slug=slug)
+
+    async def get_library_async(self, slug: str, async_client: httpx.AsyncClient) -> dict[str, Any]:
+        """Probe ``GET /v2/libraries/{slug}`` to tell a bad slug from a bad title.
+
+        Used by the availability layer only on a ``400``/``404`` from the bulk
+        availability call (HIGH-5): a 4xx here means the slug is bad; a 2xx means
+        the slug is valid and the title IDs were rejected.
+        """
+        url = self._build_library_url(slug)
+        return await self._execute_get_async(url, async_client, slug=slug)
+
+    def get_library(self, slug: str) -> dict[str, Any]:
+        """Sync mirror of :meth:`get_library_async`.
+
+        Not used by the availability layer (the async helper is canonical); kept
+        for non-async callers and parity.
+        """
+        url = self._build_library_url(slug)
+        return self._execute_get(url, slug=slug)
+
     def _build_search_url(self, slug: str, params: dict[str, Any]) -> str:
         """Build the full search URL with query parameters."""
         base = f"{BASE_URL}/v2/libraries/{slug}/media"
@@ -99,6 +140,10 @@ class ThunderClient:
         parts = [("titleIds", tid) for tid in title_ids]
         query_string = urlencode(parts)
         return f"{base}?{query_string}"
+
+    def _build_library_url(self, slug: str) -> str:
+        """Build the single-library endpoint URL (slug-validity probe)."""
+        return f"{BASE_URL}/v2/libraries/{slug}"
 
     def _encode_params(self, params: dict[str, Any]) -> str:
         """Encode params dict to query string, handling repeated values."""
@@ -155,9 +200,10 @@ class ThunderClient:
                     "error": (
                         f"unknown library slug: {slug} — check the slug is correct "
                         "(e.g. lcpl, fairfax, nypl)"
-                    )
+                    ),
+                    "status": status,
                 }
-            return {"error": f"OverDrive service error (HTTP {status})"}
+            return {"error": f"OverDrive service error (HTTP {status})", "status": status}
         except Exception as e:
             duration = time.monotonic() - start
             logger.error(
@@ -203,9 +249,10 @@ class ThunderClient:
                     "error": (
                         f"unknown library slug: {slug} — check the slug is correct "
                         "(e.g. lcpl, fairfax, nypl)"
-                    )
+                    ),
+                    "status": status,
                 }
-            return {"error": f"OverDrive service error (HTTP {status})"}
+            return {"error": f"OverDrive service error (HTTP {status})", "status": status}
         except Exception as e:
             duration = time.monotonic() - start
             logger.error(
