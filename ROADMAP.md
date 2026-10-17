@@ -260,7 +260,7 @@ Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
 full, then implement task `D7` (multi-library `get_availability` fan-out).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D7`
-- [ ] Complete
+- [x] Complete · PR: #25
 - Depends-on: item 12 (PR-D3 merged)
 
 ### 14. libby-mcp v3 — Group E Docker standalone (PR-E)
