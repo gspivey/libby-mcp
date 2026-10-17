@@ -225,3 +225,71 @@ Items move here after they merge to `development`.
 
 - Spec: `.kiro/specs/libby-mcp-local-integration/` · tasks `1`, `2`, `3`, `4`, `5`, `6`, `7`
 - [x] Complete · PR: #18
+### 10. libby-mcp v3 — Group D availability + slug fixes (PR-D1)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement tasks `D1`, `D2`, `D3` (`not_owned` per-title status, slug
+normalization, `estimated_wait_days==0`-when-available).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D1`, `D2`, `D3`
+- [ ] Complete
+- Depends-on: item 9 (local integration harness merged)
+
+### 11. libby-mcp v3 — Group D search honesty + exact mode (PR-D2)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement tasks `D4`, `D6` (honest `is_abridged`, exact-title search).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D4`, `D6`
+- [ ] Complete
+- Depends-on: item 10 (PR-D1 merged)
+
+### 12. libby-mcp v3 — Group D `lookup_library_slug` + directory cache (PR-D3)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement task `D5` (`lookup_library_slug` tool + slug directory
+cache with concurrent paging and shared in-flight lock).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D5`
+- [ ] Complete
+- Depends-on: item 11 (PR-D2 merged)
+
+### 13. libby-mcp v3 — Group D multi-library `get_availability` (PR-D4)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement task `D7` (multi-library `get_availability` fan-out).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D7`
+- [ ] Complete
+- Depends-on: item 12 (PR-D3 merged)
+
+### 14. libby-mcp v3 — Group E Docker standalone (PR-E)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement tasks `E1`, `E2`, `E3`, `E4` (single-codebase auto-detect
+entry point, Docker auth, Docker deliverables, Lambda deploy + OAuth routes).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `E1`, `E2`, `E3`, `E4`
+- [ ] Complete
+- Depends-on: item 13 (PR-D4 merged)
+
+### 15. libby-mcp v3 — Group F auth modes + OAuth metadata + jwt (PR-F1)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement tasks `F1`, `F2` (three auth modes + middleware order, OAuth
+metadata/`/register`, and `jwt.py` sign/verify — the stateless signed-token core).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `F1`, `F2`
+- [ ] Complete
+- Depends-on: item 14 (PR-E merged — single-codebase ASGI app)
+
+### 16. libby-mcp v3 — Group F OAuth flow + per-client + wiring (PR-F2)
+
+Read `.kiro/specs/libby-mcp-v3/requirements.md`, `design.md`, and `tasks.md` in
+full, then implement tasks `F3`, `F4`, `F5` (authorize + token with owner gate,
+PKCE, refresh rotation; per-client redirect URIs; README + Docker/Lambda OAuth
+wiring).
+
+- Spec: `.kiro/specs/libby-mcp-v3/` · tasks `F3`, `F4`, `F5`
+- [ ] Complete
+- Depends-on: item 15 (PR-F1 merged — `jwt.py` + metadata + auth modes)
