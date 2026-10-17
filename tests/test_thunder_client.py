@@ -389,3 +389,36 @@ class TestAsyncAvailabilityAndLibrary:
             call_url = mock_get.call_args[0][0]
         assert result == payload
         assert call_url.endswith("/v2/libraries/lcpl")
+
+
+class TestListLibraries:
+    """ThunderClient.list_libraries builds the /v2/libraries directory URL (FR-D5)."""
+
+    def test_list_libraries_url_with_paging(self) -> None:
+        client = thunder_client.ThunderClient()
+        payload = {"items": [], "totalItems": 0}
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value=payload),
+                raise_for_status=MagicMock(),
+            )
+            result = client.list_libraries(page=2, per_page=100)
+            call_url = mock_get.call_args[0][0]
+        assert result == payload
+        assert "thunder.api.overdrive.com/v2/libraries?" in call_url
+        assert "page=2" in call_url
+        assert "perPage=100" in call_url
+
+    def test_list_libraries_default_paging(self) -> None:
+        client = thunder_client.ThunderClient()
+        with patch("httpx.Client.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=MagicMock(return_value={"items": [], "totalItems": 0}),
+                raise_for_status=MagicMock(),
+            )
+            client.list_libraries()
+            call_url = mock_get.call_args[0][0]
+        assert "page=1" in call_url
+        assert "perPage=100" in call_url

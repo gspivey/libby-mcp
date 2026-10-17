@@ -1,0 +1,31 @@
+{
+  "items": [
+    {
+      "id": "fairfax",
+      "preferredKey": "fairfax",
+      "name": "Fairfax County Public Library",
+      "status": "Live",
+      "type": "DLR",
+      "isConsortium": false
+    },
+    {
+      "id": "lcpl",
+      "preferredKey": "lcpl",
+      "name": "Loudoun County Public Library",
+      "status": "Live",
+      "type": "DLR",
+      "isConsortium": false
+    },
+    {
+      "id": "nypl",
+      "preferredKey": "nypl",
+      "name": "New York Public Library",
+      "status": "Live",
+      "type": "DLR",
+      "isConsortium": false
+    }
+  ],
+  "totalItems": 3,
+  "totalItemsText": "3 libraries",
+  "links": {}
+}

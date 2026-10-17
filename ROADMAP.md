@@ -251,7 +251,7 @@ full, then implement task `D5` (`lookup_library_slug` tool + slug directory
 cache with concurrent paging and shared in-flight lock).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `D5`
-- [ ] Complete
+- [x] Complete · PR: #24
 - Depends-on: item 11 (PR-D2 merged)
 
 ### 13. libby-mcp v3 — Group D multi-library `get_availability` (PR-D4)

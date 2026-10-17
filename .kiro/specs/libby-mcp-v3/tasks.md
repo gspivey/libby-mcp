@@ -254,7 +254,7 @@ the OAuth surface grows; keep each a single reviewable unit.
 
 **PR-D2 exit:** `make preflight` green; checkboxes ticked; squash-merge.
 
-### Task D5: `lookup_library_slug` Tool + Slug Directory Cache
+### Task D5: `lookup_library_slug` Tool + Slug Directory Cache — [x] Done (PR #24)
 
 **Requirements:** FR-D5 (AC-D5.1–D5.8), NFR-2.2, NFR-3.3, NFR-5.1
 

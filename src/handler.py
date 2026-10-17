@@ -18,13 +18,19 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from src.auth import AuthMiddleware
+from src.slug_directory import SlugDirectory
 from src.thunder_client import ThunderClient
 from src.tools import availability as availability_impl
+from src.tools import lookup_library_slug as lookup_library_slug_impl
 from src.tools import search_titles as search_titles_impl
 from src.tools._slugs import normalize_slug
 
 # Module-level -- reused across warm Lambda invocations
 _thunder_client = ThunderClient()
+# Module-level slug directory cache (7-day TTL, shared in-flight fetch) reused
+# across warm invocations so the Thunder /v2/libraries walk happens at most once
+# per TTL window (FR-D5 / NFR-2.2).
+_slug_directory = SlugDirectory(_thunder_client)
 
 
 def _make_mcp() -> FastMCP:
@@ -202,6 +208,31 @@ def _make_mcp() -> FastMCP:
         slug = normalize_slug(library_slug)
         result = await availability_impl.handle(
             {"library_slug": slug, "title_ids": title_ids}, _thunder_client
+        )
+        if "error" in result:
+            raise ToolError(result["error"])
+        return result
+
+    @mcp.tool(
+        description=(
+            "Look up OverDrive/Libby library slugs by library name or partial name. "
+            "Use this when you have a library's name (e.g. 'Fairfax') but need its slug "
+            "(e.g. 'fairfax') for search_titles or get_availability. Matching is "
+            "case-insensitive substring over the library name and slug. Returns raw "
+            "directory rows (slug + name) only — no ranking or recommendation. An empty "
+            "match list means no library matched (not an error)."
+        )
+    )
+    async def lookup_library_slug(
+        name: Annotated[
+            str,
+            Field(description="Library name or partial name to look up (e.g. 'Fairfax', 'county')"),
+        ],
+    ) -> dict[str, Any]:
+        # Normalize the name at the input boundary (FR-D2 parity): trim + lower
+        # before matching. The tool re-normalizes defensively.
+        result = await lookup_library_slug_impl.handle(
+            {"name": normalize_slug(name)}, _slug_directory
         )
         if "error" in result:
             raise ToolError(result["error"])
