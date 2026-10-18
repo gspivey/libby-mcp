@@ -175,9 +175,9 @@ async def test_get_deep_link_not_registered(client):
     )
     assert resp.status_code == 200
     tool_names = [t["name"] for t in resp.json()["result"]["tools"]]
-    assert (
-        "get_deep_link" not in tool_names
-    ), "REMEDIATION: get_deep_link must be removed from the registered tool set in v2"
+    assert "get_deep_link" not in tool_names, (
+        "REMEDIATION: get_deep_link must be removed from the registered tool set in v2"
+    )
 
 
 async def test_tools_list_without_init_works_stateless(client):
@@ -358,9 +358,9 @@ async def test_search_titles_schema_uses_verified_slugs(client):
     assert resp.status_code == 200
     tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
     blob = json.dumps(tools["search_titles"])
-    assert (
-        "fairfaxcounty" not in blob
-    ), "REMEDIATION: search_titles schema/description must use 'fairfax', not 'fairfaxcounty'"
+    assert "fairfaxcounty" not in blob, (
+        "REMEDIATION: search_titles schema/description must use 'fairfax', not 'fairfaxcounty'"
+    )
     assert "fairfax" in blob
 
 
@@ -373,9 +373,9 @@ async def test_no_fairfaxcounty_in_any_tool_schema(client):
     )
     assert resp.status_code == 200
     blob = json.dumps(resp.json()["result"]["tools"])
-    assert (
-        "fairfaxcounty" not in blob
-    ), "REMEDIATION: no shipped tool schema may reference 'fairfaxcounty'"
+    assert "fairfaxcounty" not in blob, (
+        "REMEDIATION: no shipped tool schema may reference 'fairfaxcounty'"
+    )
 
 
 def test_no_fairfaxcounty_literal_in_src():
@@ -399,9 +399,9 @@ async def test_search_titles_schema_has_include_facets(client):
     assert resp.status_code == 200
     tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
     props = tools["search_titles"]["inputSchema"]["properties"]
-    assert (
-        "include_facets" in props
-    ), "REMEDIATION: search_titles must expose an include_facets parameter"
+    assert "include_facets" in props, (
+        "REMEDIATION: search_titles must expose an include_facets parameter"
+    )
 
 
 async def test_search_titles_schema_has_library_slugs(client):
@@ -414,9 +414,9 @@ async def test_search_titles_schema_has_library_slugs(client):
     assert resp.status_code == 200
     tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
     props = tools["search_titles"]["inputSchema"]["properties"]
-    assert (
-        "library_slugs" in props
-    ), "REMEDIATION: search_titles must expose a library_slugs parameter"
+    assert "library_slugs" in props, (
+        "REMEDIATION: search_titles must expose a library_slugs parameter"
+    )
     assert "library_slug" in props
 
 

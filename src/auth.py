@@ -26,6 +26,23 @@ Send = Callable[[Message], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
+def _env(name: str) -> str | None:
+    """Read a config env var, normalizing unset and empty-string to None (HIGH-2).
+
+    An **unset** variable and a variable set to an **empty / whitespace-only
+    string** are treated identically — both yield ``None`` so the documented
+    default (or absence-of-value behavior) applies (NFR-8.1). Every config
+    call site reads through this helper so no site re-implements the check; this
+    is what makes an empty ``LIBBY_MCP_API_KEY`` read as "no key" rather than
+    "configured with an empty key".
+    """
+    v = os.environ.get(name)
+    if v is None:
+        return None
+    v = v.strip()
+    return v or None
+
+
 def validate_api_key(headers: dict[str, str]) -> bool:
     """Validate the MCP API key from request headers.
 
@@ -38,7 +55,7 @@ def validate_api_key(headers: dict[str, str]) -> bool:
     Returns:
         True if the Bearer token matches the expected API key, False otherwise.
     """
-    expected_key = os.environ.get("LIBBY_MCP_API_KEY", "")
+    expected_key = _env("LIBBY_MCP_API_KEY")
     if not expected_key:
         logger.error("LIBBY_MCP_API_KEY environment variable not set")
         return False
@@ -72,16 +89,25 @@ def validate_api_key(headers: dict[str, str]) -> bool:
 
 
 class AuthMiddleware:
-    """ASGI middleware: POST-only guard + mandatory Bearer token auth.
+    """ASGI middleware: POST-only guard + static Bearer auth with Docker no-auth.
 
     Enforced order:
     1. Non-HTTP scopes (lifespan): pass through.
-    2. Non-POST HTTP methods: HTTP 405 Method Not Allowed.
-    3. POST with invalid/absent Authorization header: HTTP 401.
-    4. POST with valid Bearer token: delegate to wrapped app.
+    2. Non-POST HTTP methods: HTTP 405 Method Not Allowed (before any auth).
+       The MCP endpoint is POST-only, so a bare GET /mcp → 405 regardless of
+       auth state (AC-E2.3).
+    3. No-auth mode (``LIBBY_MCP_API_KEY`` unset/empty): serve POST
+       unauthenticated. This is the Docker local-dev / firewalled scenario
+       (AC-E2.2); it is Docker-only (the Lambda fail-closed case lands with
+       Group F / AC-F1.1-lambda).
+    4. Static-Bearer mode (``LIBBY_MCP_API_KEY`` set): POST with an invalid or
+       absent Authorization header → HTTP 401; a valid Bearer token delegates to
+       the wrapped app (AC-E2.1/E2.4).
 
-    Claude.ai supports static Bearer headers via its connector UI
-    ("Request headers" -> "authorization: Bearer <key>").
+    The same middleware runs under Lambda (Mangum) and Docker (uvicorn) — there
+    is no deployment-specific auth fork (AC-E2.5). Claude.ai supports static
+    Bearer headers via its connector UI ("Request headers" ->
+    "authorization: Bearer <key>").
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -100,6 +126,13 @@ class AuthMiddleware:
                 {"error": "Method not allowed"},
                 extra_headers=[[b"allow", b"POST"]],
             )
+            return
+
+        # No-auth mode (Docker only): when no API key is configured, serve the
+        # request unauthenticated (AC-E2.2). An empty-string key reads as unset
+        # (NFR-8.1), so it does not enable static-Bearer mode.
+        if _env("LIBBY_MCP_API_KEY") is None:
+            await self._app(scope, receive, send)
             return
 
         headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])}

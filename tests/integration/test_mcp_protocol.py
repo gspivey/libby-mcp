@@ -233,9 +233,9 @@ def _call_tool(http_client: httpx.Client, name: str, arguments: dict[str, Any]) 
     )
     if resp.status_code >= 500:
         raise httpx.TransportError(f"HTTP {resp.status_code} from {name}")
-    assert (
-        resp.status_code == 200
-    ), f"{name} returned HTTP {resp.status_code}; expected 200. body={resp.text[:300]}"
+    assert resp.status_code == 200, (
+        f"{name} returned HTTP {resp.status_code}; expected 200. body={resp.text[:300]}"
+    )
     return tool_payload(resp)
 
 
@@ -252,12 +252,12 @@ def test_initialize_returns_server_info(http_client: httpx.Client) -> None:
     )
     assert resp.status_code == 200, f"initialize failed: HTTP {resp.status_code}"
     result = resp.json()["result"]
-    assert (
-        result["serverInfo"]["name"] == "libby-mcp"
-    ), f"serverInfo.name should be 'libby-mcp', got {result.get('serverInfo')}"
-    assert (
-        "tools" in result["capabilities"]
-    ), f"capabilities should advertise 'tools', got {result.get('capabilities')}"
+    assert result["serverInfo"]["name"] == "libby-mcp", (
+        f"serverInfo.name should be 'libby-mcp', got {result.get('serverInfo')}"
+    )
+    assert "tools" in result["capabilities"], (
+        f"capabilities should advertise 'tools', got {result.get('capabilities')}"
+    )
 
 
 def test_tools_list_has_expected_tools(
@@ -279,42 +279,42 @@ def test_tools_list_has_expected_tools(
 def test_search_titles_basic(http_client: httpx.Client, initialized: dict[str, str]) -> None:
     """AC-3.7: single-library search returns titles with base + v2 enrichment fields."""
     payload = with_retry(lambda: _call_tool(http_client, "search_titles", {"library_slug": SLUG}))
-    assert (
-        "_is_error" not in payload and "_jsonrpc_error" not in payload
-    ), f"search_titles({SLUG}) should succeed, got error: {payload}"
+    assert "_is_error" not in payload and "_jsonrpc_error" not in payload, (
+        f"search_titles({SLUG}) should succeed, got error: {payload}"
+    )
     titles = payload.get("titles")
-    assert (
-        isinstance(titles, list) and len(titles) >= 1
-    ), f"expected >=1 title for slug {SLUG}, got {payload}"
+    assert isinstance(titles, list) and len(titles) >= 1, (
+        f"expected >=1 title for slug {SLUG}, got {payload}"
+    )
     for t in titles:
         assert t.get("title"), f"each title must have a non-empty 'title', got {t}"
         link = t.get("link", "")
-        assert (
-            link == f"https://{SLUG}.overdrive.com/media/{t['id']}"
-        ), f"link must be the v2 format https://{SLUG}.overdrive.com/media/<id>, got {link!r}"
+        assert link == f"https://{SLUG}.overdrive.com/media/{t['id']}", (
+            f"link must be the v2 format https://{SLUG}.overdrive.com/media/<id>, got {link!r}"
+        )
         for key in V2_ENRICHMENT_KEYS:
             assert key in t, (
                 f"v2 enrichment key {key!r} missing from title {t.get('id')}; "
                 f"keys present: {sorted(t.keys())}"
             )
-        assert isinstance(
-            t["narrator"], list
-        ), f"'narrator' must be a list (may be empty), got {type(t['narrator'])}"
+        assert isinstance(t["narrator"], list), (
+            f"'narrator' must be a list (may be empty), got {type(t['narrator'])}"
+        )
 
 
 def test_search_titles_bad_slug(http_client: httpx.Client, initialized: dict[str, str]) -> None:
     """AC-3.8: a bogus slug yields a human-readable error naming the library."""
     payload = _call_tool(http_client, "search_titles", {"library_slug": BOGUS_SLUG})
-    assert payload.get("_is_error") or payload.get(
-        "_jsonrpc_error"
-    ), f"a bogus slug must surface an error result, got {payload}"
+    assert payload.get("_is_error") or payload.get("_jsonrpc_error"), (
+        f"a bogus slug must surface an error result, got {payload}"
+    )
     text = payload.get("text") or json.dumps(payload.get("_jsonrpc_error", {}))
-    assert (
-        BOGUS_SLUG in text
-    ), f"the error should name the library slug {BOGUS_SLUG!r}; got {text!r}"
-    assert (
-        "HTTP 404" not in text
-    ), f"the error must read as human prose, not a raw status dump; got {text!r}"
+    assert BOGUS_SLUG in text, (
+        f"the error should name the library slug {BOGUS_SLUG!r}; got {text!r}"
+    )
+    assert "HTTP 404" not in text, (
+        f"the error must read as human prose, not a raw status dump; got {text!r}"
+    )
 
 
 def test_search_titles_multi_library(
@@ -324,13 +324,13 @@ def test_search_titles_multi_library(
     payload = with_retry(
         lambda: _call_tool(http_client, "search_titles", {"library_slugs": [SLUG, SLUG_2]})
     )
-    assert (
-        "_is_error" not in payload and "_jsonrpc_error" not in payload
-    ), f"multi-library search should succeed overall, got {payload}"
+    assert "_is_error" not in payload and "_jsonrpc_error" not in payload, (
+        f"multi-library search should succeed overall, got {payload}"
+    )
     libraries = payload.get("libraries")
-    assert (
-        isinstance(libraries, list) and len(libraries) == 2
-    ), f"expected payload['libraries'] of length 2, got {payload}"
+    assert isinstance(libraries, list) and len(libraries) == 2, (
+        f"expected payload['libraries'] of length 2, got {payload}"
+    )
     slugs = [block.get("library_slug") for block in libraries]
     assert slugs == [
         SLUG,
@@ -354,41 +354,41 @@ def test_get_availability_partial_batch(
             {"library_slug": SLUG, "title_ids": [GOING_POSTAL_ID, BOGUS_TITLE_ID]},
         )
     )
-    assert (
-        "_is_error" not in payload and "_jsonrpc_error" not in payload
-    ), f"get_availability should succeed overall, got {payload}"
+    assert "_is_error" not in payload and "_jsonrpc_error" not in payload, (
+        f"get_availability should succeed overall, got {payload}"
+    )
     by_id = {t["title_id"]: t for t in payload.get("titles", [])}
     assert GOING_POSTAL_ID in by_id, f"valid id {GOING_POSTAL_ID} missing from {payload}"
     valid = by_id[GOING_POSTAL_ID]
     for key in ("copies_owned", "copies_available", "holds_count"):
         assert key in valid, f"valid title must expose {key!r}, got {valid}"
     assert BOGUS_TITLE_ID in by_id, f"bogus id {BOGUS_TITLE_ID} missing from {payload}"
-    assert (
-        by_id[BOGUS_TITLE_ID].get("status") == "not_owned"
-    ), f"a not-owned id must be reported with status == 'not_owned', got {by_id[BOGUS_TITLE_ID]}"
+    assert by_id[BOGUS_TITLE_ID].get("status") == "not_owned", (
+        f"a not-owned id must be reported with status == 'not_owned', got {by_id[BOGUS_TITLE_ID]}"
+    )
 
 
 def test_auth_missing_bearer(http_client: httpx.Client) -> None:
     """AC-3.13: a POST with no Authorization header returns HTTP 401."""
     resp = mcp_call("tools/list", {}, token=None, client=http_client)
-    assert (
-        resp.status_code == 401
-    ), f"missing Bearer must yield 401, got {resp.status_code}: {resp.text[:200]}"
+    assert resp.status_code == 401, (
+        f"missing Bearer must yield 401, got {resp.status_code}: {resp.text[:200]}"
+    )
 
 
 def test_auth_wrong_token(http_client: httpx.Client) -> None:
     """AC-3.14: a POST with a wrong Bearer token returns HTTP 401."""
     resp = mcp_call("tools/list", {}, token="wrong-token", client=http_client)
-    assert (
-        resp.status_code == 401
-    ), f"wrong token must yield 401, got {resp.status_code}: {resp.text[:200]}"
+    assert resp.status_code == 401, (
+        f"wrong token must yield 401, got {resp.status_code}: {resp.text[:200]}"
+    )
 
 
 def test_get_mcp_returns_405(http_client: httpx.Client) -> None:
     """AC-3.15 / DD-7: GET /mcp returns HTTP 405 with an Allow: POST header."""
     resp = http_client.get(ENDPOINT, headers=_headers(API_KEY), timeout=TIMEOUT)
-    assert (
-        resp.status_code == 405
-    ), f"GET /mcp must yield 405 (method guard), got {resp.status_code}"
+    assert resp.status_code == 405, (
+        f"GET /mcp must yield 405 (method guard), got {resp.status_code}"
+    )
     allow = resp.headers.get("Allow", "")
     assert "POST" in allow, f"405 response must include an 'Allow: POST' header, got {allow!r}"

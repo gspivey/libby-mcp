@@ -1,4 +1,18 @@
-"""Lambda handler -- FastMCP Streamable HTTP transport over Mangum ASGI adapter.
+"""MCP server entry point -- one codebase, two runtimes (FR-E1).
+
+Serves a single FastMCP Streamable HTTP ASGI app under either runtime, with no
+fork into separate Lambda/Docker handler modules (AC-E1.1):
+
+- **Lambda** (``AWS_LAMBDA_RUNTIME_API`` present): ``lambda_handler`` wraps the
+  app with Mangum, unchanged from v2 (AC-E1.2).
+- **Docker / local** (``AWS_LAMBDA_RUNTIME_API`` absent): uvicorn serves the raw
+  ASGI app via the ``_build_app`` factory (AC-E1.3)::
+
+      uvicorn src.handler:_build_app --factory --host 0.0.0.0 --port 8000
+
+Both runtimes build the identical ``AuthMiddleware(router)`` app and serve the
+MCP endpoint at ``/mcp`` (AC-E1.4), so a connector config is portable between
+them.
 
 Uses stateless mode (no in-memory session state per invocation) for Lambda
 compatibility. Builds a fresh FastMCP app per invocation: mcp.server.fastmcp's
@@ -9,6 +23,7 @@ Bearer token auth is enforced via AuthMiddleware on every request.
 
 from __future__ import annotations
 
+import os
 from typing import Annotated, Any, Literal
 
 from mangum import Mangum
@@ -31,6 +46,14 @@ _thunder_client = ThunderClient()
 # across warm invocations so the Thunder /v2/libraries walk happens at most once
 # per TTL window (FR-D5 / NFR-2.2).
 _slug_directory = SlugDirectory(_thunder_client)
+
+# Runtime auto-detect (FR-E1 / AC-E1.2/E1.3). AWS sets AWS_LAMBDA_RUNTIME_API in
+# every Lambda execution environment, so its presence distinguishes the Lambda
+# runtime (Mangum) from Docker / local (uvicorn serving the ASGI app directly).
+# Available for anything that genuinely needs it (e.g. OAuth no-auth fail-closed
+# on Lambda in Group F); tool and auth logic are otherwise identical across
+# runtimes.
+_IS_LAMBDA = "AWS_LAMBDA_RUNTIME_API" in os.environ
 
 
 def _make_mcp() -> FastMCP:
@@ -281,12 +304,24 @@ def _make_mcp() -> FastMCP:
 
 
 def _build_app() -> AuthMiddleware:
-    """Build a fresh ASGI app instance for each Lambda invocation."""
+    """Build a fresh ASGI app instance.
+
+    Returns the ``AuthMiddleware(router)`` app served identically under both
+    runtimes (AC-E1.1): Mangum wraps it on Lambda, and uvicorn serves it via
+    ``--factory`` on Docker / local (AC-E1.3/E1.5). A new instance is built per
+    call because StreamableHTTPSessionManager.run() may be called only once per
+    FastMCP instance.
+    """
     fastmcp_app = _make_mcp().streamable_http_app()
     return AuthMiddleware(fastmcp_app)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """AWS Lambda entry point for API Gateway HTTP API v2 events."""
+    """AWS Lambda entry point for API Gateway HTTP API v2 events.
+
+    Reached only under the Lambda runtime (AC-E1.2). Mangum wraps the same
+    ``_build_app()`` factory the Docker/uvicorn path serves, so there is no code
+    fork between runtimes.
+    """
     handler = Mangum(_build_app(), lifespan="on")
     return handler(event, context)
