@@ -270,7 +270,7 @@ full, then implement tasks `E1`, `E2`, `E3`, `E4` (single-codebase auto-detect
 entry point, Docker auth, Docker deliverables, Lambda deploy + OAuth routes).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `E1`, `E2`, `E3`, `E4`
-- [ ] Complete
+- [x] Complete · PR: #26
 - Depends-on: item 13 (PR-D4 merged)
 
 ### 15. libby-mcp v3 — Group F auth modes + OAuth metadata + jwt (PR-F1)
