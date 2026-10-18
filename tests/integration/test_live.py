@@ -42,9 +42,9 @@ class TestSearchEndpoint:
     def test_search_returns_valid_json(self, client: httpx.Client) -> None:
         """Thunder API search returns a valid JSON response with expected top-level keys."""
         response = client.get(f"/v2/libraries/{LIBRARY_SLUG}/media", params={"perPage": 5})
-        assert response.status_code == 200, (
-            f"Expected 200 from Thunder API, got {response.status_code}"
-        )
+        assert (
+            response.status_code == 200
+        ), f"Expected 200 from Thunder API, got {response.status_code}"
         data = response.json()
         assert "items" in data, "Response missing 'items' key"
         assert "totalItems" in data, "Response missing 'totalItems' key"
@@ -119,9 +119,9 @@ class TestSearchEndpoint:
         assert "items" in data
         # All items should be available when this filter is applied
         for item in data["items"]:
-            assert item.get("isAvailable") is True, (
-                f"Item {item.get('id')} should be available with showOnlyAvailable=true"
-            )
+            assert (
+                item.get("isAvailable") is True
+            ), f"Item {item.get('id')} should be available with showOnlyAvailable=true"
 
 
 class TestAvailabilityEndpoint:
@@ -160,9 +160,9 @@ class TestAvailabilityEndpoint:
 
         item = data["items"][0]
         # Fields used by the get_availability tool
-        assert "id" in item or "titleId" in item, (
-            "Availability item missing identifier field (id or titleId)"
-        )
+        assert (
+            "id" in item or "titleId" in item
+        ), "Availability item missing identifier field (id or titleId)"
         assert "availableCopies" in item, "Availability item missing 'availableCopies'"
         assert "ownedCopies" in item, "Availability item missing 'ownedCopies'"
         assert "holdsCount" in item, "Availability item missing 'holdsCount'"
