@@ -177,8 +177,7 @@ class TestHumanReadable404:
             result = client.get_availability("nope", ["1"])
         assert result == {
             "error": (
-                "unknown library slug: nope — check the slug is correct "
-                "(e.g. lcpl, fairfax, nypl)"
+                "unknown library slug: nope — check the slug is correct (e.g. lcpl, fairfax, nypl)"
             ),
             "status": 404,
         }
@@ -217,7 +216,7 @@ class TestHumanReadable404:
             result = client.search("", {})
         assert result == {
             "error": (
-                "unknown library slug:  — check the slug is correct " "(e.g. lcpl, fairfax, nypl)"
+                "unknown library slug:  — check the slug is correct (e.g. lcpl, fairfax, nypl)"
             ),
             "status": 404,
         }

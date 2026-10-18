@@ -339,7 +339,7 @@ checkboxes ticked; squash-merge.
 
 ## Group E — Docker Standalone (PR-E)
 
-### Task E1: Single-Codebase Auto-Detect Entry Point
+### Task E1: Single-Codebase Auto-Detect Entry Point — [x] Done (PR #26)
 
 **Requirements:** FR-E1 (AC-E1.1–E1.5), FR-E4 (AC-E4.3)
 
@@ -356,7 +356,7 @@ checkboxes ticked; squash-merge.
 
 **Acceptance:** AC-E1.1–E1.5, AC-E4.3.
 
-### Task E2: Docker Auth Behavior
+### Task E2: Docker Auth Behavior — [x] Done (PR #26)
 
 **Requirements:** FR-E2 (AC-E2.1–E2.5)
 
@@ -378,7 +378,7 @@ checkboxes ticked; squash-merge.
 
 **Acceptance:** AC-E2.1–E2.5.
 
-### Task E3: Docker Deliverables
+### Task E3: Docker Deliverables — [x] Done (PR #26)
 
 **Requirements:** FR-E3 (AC-E3.1–E3.7)
 
@@ -426,7 +426,7 @@ checkboxes ticked; squash-merge.
 
 **Acceptance:** AC-E3.1–E3.7, AC-E4.3 (uvicorn Docker-only), NFR-8.1–NFR-8.3 (HIGH-2).
 
-### Task E4: Lambda Deploy Unchanged
+### Task E4: Lambda Deploy Unchanged — [x] Done (PR #26)
 
 **Requirements:** FR-E4 (AC-E4.1–E4.4), NFR-6.2, NFR-6.3
 

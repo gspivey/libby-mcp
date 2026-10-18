@@ -1,0 +1,59 @@
+# Standalone MCP server (FR-E3). `docker compose up` builds the root Dockerfile
+# and serves the MCP endpoint on http://127.0.0.1:8000/mcp — no AWS account or
+# credentials required (AC-E3.7).
+services:
+  libby-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: libby-mcp:local
+    # HIGH-6: bind to loopback only by default so the dev-only OAuth auto-approve
+    # path (Group F) can never be reached from off-box and auto-approve is never
+    # co-located with a published port. Operators who truly want to publish the
+    # port change this to "8000:8000" AND must configure an auth mechanism
+    # (LIBBY_MCP_API_KEY or OAuth) first.
+    ports:
+      - "127.0.0.1:8000:8000"
+    # HIGH-2 / NFR-8.2: use the LIST form so a var that is *unset on the host* is
+    # NOT passed into the container at all (no empty-string injection). The
+    # `${VAR:-}` MAP form would set the container var to "" (present-but-empty);
+    # even though the server normalizes "" -> unset (NFR-8.1), the compose file
+    # avoids injecting empties so a bare `docker compose up` yields exactly the
+    # documented defaults.
+    environment:
+      # unset on host -> not passed -> no-auth (Docker only). Set it to require
+      # a static Bearer token on /mcp.
+      - LIBBY_MCP_API_KEY
+      # --- OAuth (Group F); all optional, honored only when OAuth is enabled ---
+      - LIBBY_MCP_OAUTH_ENABLED
+      - LIBBY_MCP_OAUTH_SIGNING_KEY       # REQUIRED when OAuth on (CRITICAL-2)
+      - LIBBY_MCP_OAUTH_OWNER_SECRET      # owner consent gate (CRITICAL-3); defaults to the API key
+      - LIBBY_MCP_OAUTH_DEV_AUTO_APPROVE  # dev-only; honored only off-Lambda + loopback base URL
+      - LIBBY_MCP_PUBLIC_BASE_URL         # required for non-loopback OAuth (HIGH-10)
+      - LIBBY_MCP_OAUTH_ACCESS_TTL_SECONDS   # default 3600
+      - LIBBY_MCP_OAUTH_REFRESH_TTL_SECONDS  # default 2592000
+      - LIBBY_MCP_OAUTH_CODE_TTL_SECONDS     # default 60
+      # slug-directory TTL override (default 7 days)
+      - LIBBY_MCP_SLUG_TTL_SECONDS
+    healthcheck:
+      # The endpoint is POST-only, so the only unauthenticated, side-effect-free
+      # liveness probe is GET /mcp, which AuthMiddleware answers with 405 (or 401
+      # in static-Bearer mode without a key). Either means "the ASGI app is up and
+      # routing". python:3.12-slim ships no curl/wget, so probe with stdlib urllib.
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - |
+          import sys, urllib.request as u, urllib.error as e
+          try:
+              u.urlopen(u.Request("http://localhost:8000/mcp"), timeout=3)
+          except e.HTTPError as ex:
+              sys.exit(0 if ex.code in (401, 405) else 1)
+          except Exception:
+              sys.exit(1)
+          sys.exit(1)
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s

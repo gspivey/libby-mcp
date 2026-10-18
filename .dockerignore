@@ -1,6 +1,7 @@
-# CDK bundler exclusions -- keep the Lambda asset small
-# The PythonFunction asset entry is the repo root, so these paths
-# are relative to ~/Development/libby-mcp/
+# Build-context / bundler exclusions -- keep the image and the Lambda asset small.
+# This file governs BOTH the root Dockerfile build context (standalone image,
+# FR-E3 / AC-E3.5) and the CDK PythonFunction asset bundling (whose asset entry
+# is the repo root). The image/asset should contain only runtime source + deps.
 
 infra/
 tests/

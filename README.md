@@ -19,10 +19,10 @@ OverDrive library works.
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11+ (runtime 3.12 — the Docker image and the deployed Lambda both run on 3.12)
+- Docker (for the standalone container, or for CDK Lambda bundling)
 - Node.js 20+ (for CDK deployment)
-- AWS CLI configured (for deployment)
-- Docker (for CDK Lambda bundling)
+- AWS CLI configured (only for the AWS deployment path)
 
 ### Local development
 
@@ -36,6 +36,66 @@ make test
 # Full pre-push check (lint + typecheck + test + spec validation)
 make preflight
 ```
+
+### Run with Docker (standalone, no AWS)
+
+The server runs as a standalone container — `git clone && docker compose up`, with
+no AWS account, credentials, or Secrets Manager access. The same `src.handler:_build_app`
+ASGI factory the Lambda uses is served by uvicorn (the handler auto-detects the runtime;
+no code fork), so a connector config is portable between Docker and Lambda.
+
+```bash
+# Build and start the server. Binds to 127.0.0.1:8000 by default (loopback only).
+docker compose up --build
+
+# The MCP endpoint is now at http://127.0.0.1:8000/mcp
+```
+
+By default (no `LIBBY_MCP_API_KEY` set) the container serves `/mcp` **unauthenticated** —
+intended for local-dev / firewalled use only. To require a static Bearer token, export the
+key before starting:
+
+```bash
+export LIBBY_MCP_API_KEY="your-secret-key"
+docker compose up --build
+```
+
+Verify the server is up (a valid MCP `initialize`, when a key is set):
+
+```bash
+curl -X POST http://127.0.0.1:8000/mcp \
+  -H "Authorization: Bearer $LIBBY_MCP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+```
+
+A bare `GET /mcp` returns HTTP 405 (the endpoint is POST-only); a `POST /mcp` with no
+`Authorization` header, when a key is set, returns HTTP 401.
+
+> The default compose binding is `127.0.0.1:8000:8000` (loopback only). If you publish the
+> port to a non-loopback interface (`8000:8000`), you MUST configure an auth mechanism
+> (`LIBBY_MCP_API_KEY` or OAuth) first — never expose the server unauthenticated.
+
+#### Connector configuration (static header)
+
+Claude Desktop (`~/.claude/mcp.json`) or Cursor (`mcp.json`), pointing at the local
+container:
+
+```json
+{
+  "mcpServers": {
+    "libby": {
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer your-secret-key"
+      }
+    }
+  }
+}
+```
+
+If you run with no `LIBBY_MCP_API_KEY`, omit the `headers` block.
 
 ### Deploy to AWS
 
@@ -139,9 +199,9 @@ the workflow only defines the job.
 ## Project structure
 
 ```
-src/                    Python source (Lambda function code)
-  handler.py            Lambda entry point (FastMCP over Mangum)
-  auth.py               Bearer token validation
+src/                    Python source (shared by Lambda and Docker)
+  handler.py            Single entry point: Mangum on Lambda, uvicorn ASGI on Docker (auto-detected)
+  auth.py               Bearer token validation (static-Bearer, plus Docker no-auth)
   thunder_client.py     HTTP client for Thunder API
   slug_directory.py     In-process TTL cache of the Thunder library directory
   fallback_slugs.json   Bundled offline library-slug snapshot (directory fallback)
@@ -149,6 +209,9 @@ src/                    Python source (Lambda function code)
     search_titles.py    Catalog search with filtering, multi-library fan-out
     availability.py     Batch availability lookup
     lookup_library_slug.py  Library-name -> slug lookup over the cached directory
+
+Dockerfile              Standalone image (multi-stage, non-root, python:3.12-slim)
+docker-compose.yml      `docker compose up` — standalone server on 127.0.0.1:8000
 
 infra/                  AWS CDK stack (TypeScript)
   bin/libby-mcp.ts      CDK app entry point
@@ -162,13 +225,19 @@ scripts/                Deploy, destroy, validation
 ## Architecture
 
 ```
-MCP Client → API Gateway (POST /mcp) → Lambda (Python 3.12) → Thunder API (public)
-                                              ↓
-                                       Secrets Manager (API key at deploy time)
+                         AWS_LAMBDA_RUNTIME_API set?
+                 ┌─────────────────┴──────────────────┐
+         yes (Lambda)                          no (Docker / local)
+   API Gateway → Mangum(_build_app())    uvicorn src.handler:_build_app --factory
+                 └───────────────┬──────────────────┘
+                                 ▼
+                    _build_app() → AuthMiddleware(/mcp)
+                                 ▼
+                         Thunder API (public, no auth)
 ```
 
-The Thunder API requires no authentication — it is a public endpoint. The MCP API key
-protects access to this server, not to Thunder.
+One codebase serves both runtimes — `handler.py` auto-detects Lambda vs. Docker via the
+`AWS_LAMBDA_RUNTIME_API` environment variable and serves the identical ASGI app at `/mcp`.
 
 ## License
 
