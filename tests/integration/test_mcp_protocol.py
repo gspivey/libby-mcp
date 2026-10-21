@@ -361,7 +361,7 @@ def test_get_availability_partial_batch(
     assert BOGUS_TITLE_ID in by_id, f"bogus id {BOGUS_TITLE_ID} missing from {payload}"
     assert (
         by_id[BOGUS_TITLE_ID].get("status") == "not_owned"
-), f"bogus id must be reported with status == 'not_owned', got {by_id[BOGUS_TITLE_ID]}"
+    ), f"bogus id must be reported with status == 'not_owned', got {by_id[BOGUS_TITLE_ID]}"
     assert (
         "error" not in by_id[BOGUS_TITLE_ID]
     ), f"the legacy per-title error:'not_found' shape must be gone, got {by_id[BOGUS_TITLE_ID]}"
