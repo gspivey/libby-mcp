@@ -62,7 +62,56 @@ def handle(params: dict[str, Any], client: "ThunderClient") -> dict[str, Any]:
     # Call Thunder API
     response = client.search(library_slug, thunder_params)
 
-    return _build_result_block(library_slug, params, response)
+    result = _build_result_block(library_slug, params, response)
+
+    # Exact-mode paging (FR-D6 / AC-D6.7): the exact filter runs client-side over
+    # the fetched page. If page 1 yielded no exact match while the catalog has
+    # more results (total_items > 0), fetch further pages — up to a 3-page / 300-
+    # item cap — and re-filter, stopping as soon as a match is found. This catches
+    # an exact title that sits just beyond page 1 without an unbounded walk.
+    if params.get("exact") and params.get("query") and "error" not in result:
+        result = _exact_page_through(library_slug, params, client, result)
+
+    return result
+
+
+# Maximum pages fetched when resolving an exact-title match (AC-D6.7): 3 pages at
+# perPage=100 == 300 items.
+EXACT_MAX_PAGES = 3
+
+
+def _exact_page_through(
+    library_slug: str,
+    params: dict[str, Any],
+    client: "ThunderClient",
+    first_result: dict[str, Any],
+) -> dict[str, Any]:
+    """Fetch additional pages to find an exact-title match beyond page 1 (AC-D6.7).
+
+    ``first_result`` is the already-built page-1 block. If it already has a match
+    (or the catalog has no further items), it is returned unchanged. Otherwise
+    pages 2..``EXACT_MAX_PAGES`` are fetched and re-filtered, returning the first
+    page whose block contains a match, or the last fetched (empty) block if the
+    cap is reached with no match.
+    """
+    if first_result.get("titles"):
+        return first_result
+    if first_result.get("total_items", 0) <= 0:
+        return first_result
+
+    last_block = first_result
+    for page in range(2, EXACT_MAX_PAGES + 1):
+        page_params = {**params, "page": page}
+        response = client.search(library_slug, _build_thunder_params(page_params))
+        block = _build_result_block(library_slug, page_params, response)
+        if "error" in block:
+            # A transient error on a later page: keep the page-1 (empty) block
+            # rather than surfacing the later-page error.
+            return first_result
+        if block.get("titles"):
+            return block
+        last_block = block
+    return last_block
 
 
 def _build_result_block(
@@ -101,6 +150,14 @@ def _build_result_block(
         for item in filtered_items
         if (normalized := _normalize_item(item, library_slug)) is not None
     ]
+
+    # Exact-title filter (FR-D6): when exact=True and a query is present, keep
+    # only titles whose normalized title equals the normalized query. Applied
+    # here so it covers both the single-library and multi-library paths
+    # (AC-D6.6); filtered_count below reflects the post-exact count.
+    if params.get("exact") and params.get("query"):
+        q = str(params["query"]).strip().lower()
+        titles = [t for t in titles if str(t.get("title", "")).strip().lower() == q]
 
     # Build pagination metadata (from server response, before client filtering)
     links = response.get("links", {})
@@ -223,6 +280,8 @@ def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
     """Map MCP params to Thunder API query params."""
     thunder: dict[str, Any] = {}
 
+    exact = bool(params.get("exact"))
+
     # subjects -> repeated subject param (coerced to strings)
     if "subjects" in params:
         thunder["subject"] = [str(s) for s in params["subjects"]]
@@ -231,10 +290,13 @@ def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
     if "format" in params:
         thunder["format"] = FORMAT_MAP.get(params["format"], params["format"])
 
-    # available=true -> showOnlyAvailable=true; omitted -> availableFirst=true
+    # available=true -> showOnlyAvailable=true; omitted -> availableFirst=true.
+    # In exact mode (FR-D6 / AC-D6.7) we never add availableFirst: an exact match
+    # must not be pushed off page 1 by availability ordering — relevance ordering
+    # (set below) keeps the exact title near the front.
     if params.get("available") is True:
         thunder["showOnlyAvailable"] = "true"
-    else:
+    elif not exact:
         thunder["availableFirst"] = "true"
 
     # creator -> creator (direct)
@@ -255,16 +317,24 @@ def _build_thunder_params(params: dict[str, Any]) -> dict[str, Any]:
             params["maturity_level"], params["maturity_level"]
         )
 
-    # sort_by -> sortBy (direct)
-    if "sort_by" in params:
+    # sort_by -> sortBy (direct). Exact mode forces relevance ordering so the
+    # exact title ranks near the front rather than being ordered by availability
+    # (AC-D6.7); it overrides any caller-supplied sort_by.
+    if exact:
+        thunder["sortBy"] = "relevance"
+    elif "sort_by" in params:
         thunder["sortBy"] = params["sort_by"]
 
     # query -> query (direct)
     if "query" in params:
         thunder["query"] = params["query"]
 
-    # per_page -> perPage (clamp to max 100, default 24)
-    per_page = min(int(params.get("per_page", 24)), 100)
+    # per_page -> perPage (clamp to max 100, default 24). Exact mode uses the
+    # max page size (100) so a single fetch covers more candidates (AC-D6.7).
+    if exact:
+        per_page = 100
+    else:
+        per_page = min(int(params.get("per_page", 24)), 100)
     thunder["perPage"] = str(per_page)
 
     # page -> page (default 1)
@@ -424,6 +494,32 @@ def _extract_narrators(item: dict[str, Any]) -> list[str]:
     ]
 
 
+def _derive_abridged(primary_fmt: dict[str, Any], edition: str | None) -> bool | None:
+    """Honestly derive ``is_abridged`` or return ``None`` (FR-D4).
+
+    Priority (AC-D4.1/D4.2):
+
+    1. A real boolean ``isAbridged`` on the primary format entry wins.
+    2. Else an "unabridged"/"abridged" token in the ``edition`` string — checked
+       in that order so an "Unabridged" edition is never mis-read as abridged.
+    3. Else ``None`` (unknown) — the value is never fabricated as ``False``.
+
+    The field is absent from the Thunder OpenAPI reference, so against the live
+    API the result comes from ``edition`` when that carries a signal, else
+    ``None`` (AC-D4.3 keeps the field with an honest ``None`` default).
+    """
+    raw = primary_fmt.get("isAbridged")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(edition, str):
+        e = edition.strip().lower()
+        if "unabridged" in e:
+            return False
+        if "abridged" in e:
+            return True
+    return None
+
+
 def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] | None:
     """Normalize a Thunder API item into the Title Object schema.
 
@@ -474,11 +570,12 @@ def _normalize_item(item: dict[str, Any], library_slug: str) -> dict[str, Any] |
     raw_edition = item.get("edition")
     edition = raw_edition if isinstance(raw_edition, str) else None
 
-    # is_abridged: isAbridged on the primary format entry — the same entry used
-    # for format/duration detection (AC-C3.3). The field is not present in the
-    # OpenAPI reference, so it resolves to None (unknown) against the live API,
-    # which is exactly the AC-C3.2/C3.4 default (never coerced to False).
-    is_abridged = primary_fmt.get("isAbridged")
+    # is_abridged (FR-D4): honest derivation. A real format-entry `isAbridged`
+    # boolean wins (AC-C3.3 / AC-D4.1); else an abridged/unabridged token in the
+    # `edition` string; else None (unknown) — never a fabricated False
+    # (AC-D4.2/D4.4). The field is not in the OpenAPI reference, so on the live
+    # API it resolves from `edition` when that carries a signal, else None.
+    is_abridged = _derive_abridged(primary_fmt, edition)
 
     # Folded availability signals (FR-B2): derived from the search item itself,
     # no extra per-title availability call (AC-B2.4 / NFR-2.3).

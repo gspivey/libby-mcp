@@ -54,7 +54,9 @@ def _make_mcp() -> FastMCP:
             "estimated_wait_days folded in from the search response), deep links (each "
             "title's `link` field), and copy/hold counts. Provide exactly one of "
             "library_slug (single library, flat response) or library_slugs (fan-out "
-            "across up to 10 libraries, results grouped per library). Facets (valid "
+            "across up to 10 libraries, results grouped per library). Set exact=true "
+            "(with a query) to return only titles whose title matches the query exactly. "
+            "Facets (valid "
             "subject IDs for the library) are opt-in: pass include_facets=true to "
             "receive them; by default the facets block is omitted to reduce payload size."
         )
@@ -103,6 +105,16 @@ def _make_mcp() -> FastMCP:
             str | None,
             Field(description="Full-text search on title+subtitle+description"),
         ] = None,
+        exact: Annotated[
+            bool,
+            Field(
+                description=(
+                    "When true, return only titles whose title matches `query` "
+                    "exactly (case-insensitive), with no fuzzy fallback. Requires "
+                    "`query`. Defaults to false (fuzzy full-text search)."
+                )
+            ),
+        ] = False,
         include_facets: Annotated[
             bool,
             Field(
@@ -122,7 +134,7 @@ def _make_mcp() -> FastMCP:
 
         # Build args dict from non-None values only, so a library_slugs-only
         # call never carries a stray library_slug=None into validation.
-        args: dict[str, Any] = {"include_facets": include_facets}
+        args: dict[str, Any] = {"include_facets": include_facets, "exact": exact}
         for k, v in {
             "library_slug": library_slug,
             "library_slugs": library_slugs,
@@ -141,6 +153,11 @@ def _make_mcp() -> FastMCP:
         }.items():
             if v is not None:
                 args[k] = v
+
+        # exact requires query (AC-D6.4): there is no title to match against
+        # without a query, so reject before dispatch.
+        if exact and "query" not in args:
+            raise ToolError("exact requires query")
 
         # One-of validation (AC-B1.2)
         has_slug = "library_slug" in args

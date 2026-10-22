@@ -874,7 +874,12 @@ class TestHonestIsAbridged:
         """AC-D4.1: a real format-entry isAbridged=True is honored."""
         thunder_client.search.return_value = {
             "items": [
-                {"id": "1", "title": "X", "edition": "Unabridged", "formats": [{"isAbridged": True}]}
+                {
+                    "id": "1",
+                    "title": "X",
+                    "edition": "Unabridged",
+                    "formats": [{"isAbridged": True}],
+                }
             ],
             "totalItems": 1,
             "links": {"self": {"page": 1}, "last": {"page": 1}},
@@ -898,9 +903,7 @@ class TestHonestIsAbridged:
     def test_edition_unabridged_derives_false(self, thunder_client: MagicMock) -> None:
         """AC-D4.1: edition 'Unabridged' (no format isAbridged) → False."""
         thunder_client.search.return_value = {
-            "items": [
-                {"id": "1", "title": "X", "edition": "Unabridged Edition", "formats": [{}]}
-            ],
+            "items": [{"id": "1", "title": "X", "edition": "Unabridged Edition", "formats": [{}]}],
             "totalItems": 1,
             "links": {"self": {"page": 1}, "last": {"page": 1}},
         }
@@ -1077,6 +1080,7 @@ class TestExactSearchMode:
 
     def test_exact_paging_stops_at_three_page_cap(self, thunder_client: MagicMock) -> None:
         """AC-D6.7: paging is bounded at 3 pages (300 items) when no match is found."""
+
         def page(n: int) -> dict:
             return {
                 "items": [{"id": f"{n}a", "title": "Partial Match One"}],
