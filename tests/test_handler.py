@@ -530,3 +530,43 @@ async def test_search_titles_normalizes_and_dedupes_slugs(client):
         )
     assert resp.status_code == 200
     assert captured["slugs"] == ["lcpl"]
+
+
+async def test_search_titles_schema_has_exact(client):
+    """AC-D6.1: search_titles exposes an `exact` boolean parameter."""
+    resp = await client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 25, "method": "tools/list", "params": {}},
+        headers=BASE_HEADERS,
+    )
+    assert resp.status_code == 200
+    tools = {t["name"]: t for t in resp.json()["result"]["tools"]}
+    props = tools["search_titles"]["inputSchema"]["properties"]
+    assert "exact" in props, "REMEDIATION: search_titles must expose an `exact` parameter"
+
+
+async def test_search_titles_exact_without_query_errors(client):
+    """AC-D6.4: exact=True with no query is a validation error (exact requires query)."""
+    resp = await _call_search(client, {"library_slug": "lcpl", "exact": True}, 26)
+    assert resp.status_code == 200
+    result = resp.json()["result"]
+    assert result["isError"] is True
+    assert "exact requires query" in result["content"][0]["text"]
+
+
+async def test_search_titles_exact_with_query_dispatches(client):
+    """AC-D6.1: exact=True + query passes validation and reaches the impl layer."""
+    captured: dict = {}
+
+    def fake_handle(params, client):
+        captured["exact"] = params.get("exact")
+        captured["query"] = params.get("query")
+        return {"library_slug": params["library_slug"], "titles": []}
+
+    with patch("src.handler.search_titles_impl.handle", side_effect=fake_handle):
+        resp = await _call_search(
+            client, {"library_slug": "lcpl", "query": "The Mom Test", "exact": True}, 27
+        )
+    assert resp.status_code == 200
+    assert captured["exact"] is True
+    assert captured["query"] == "The Mom Test"
