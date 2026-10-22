@@ -99,9 +99,15 @@ If you run with no `LIBBY_MCP_API_KEY`, omit the `headers` block.
 
 ### Deploy to AWS
 
-The infrastructure is defined as an AWS CDK stack (TypeScript) in `infra/`.
+The infrastructure is defined as an AWS CDK stack (TypeScript) in `infra/`. It deploys into
+whichever account and region your AWS credentials point at (set `AWS_PROFILE` to choose a
+profile). You need Node.js, the AWS CLI with working credentials, and Docker running (CDK
+uses it to package the Lambda).
 
 ```bash
+# Once per account/region: create the CDK bootstrap resources
+cd infra && npm install && npx cdk bootstrap && cd ..
+
 # Deploy
 ./scripts/deploy.sh
 
@@ -126,6 +132,25 @@ npx cdk deploy --require-approval never --outputs-file ../cdk-outputs.json
 - **API Gateway HTTP API** — `POST /mcp` endpoint with throttling (10 req/s burst, 5 req/s sustained)
 - **Secrets Manager** — auto-generated API key for MCP client authentication
 - **CloudWatch Logs** — 14-day retention
+
+The throttle is one limit for the whole API, shared by every caller, not a per-user limit.
+
+### Estimated cost
+
+At personal or small-group usage this is **about $0.40–$0.50 a month**, almost all of it the
+Secrets Manager secret. Estimates use us-east-1 list prices as of October 2026; check the AWS
+pricing pages for your region.
+
+| Item | Price | 1,000 calls/month | 100,000 calls/month |
+| --- | --- | --- | --- |
+| Secrets Manager (1 secret) | $0.40/secret/month | $0.40 | $0.40 |
+| API Gateway HTTP API | $1.00 per million requests | <$0.01 | $0.10 |
+| Lambda (ARM, 256 MB, ~1 s/call) | always-free tier: 1M requests + 400,000 GB-s/month | $0 | $0 |
+| CloudWatch Logs | $0.50/GB ingested | <$0.01 | ~$0.05 |
+| **Total** | | **~$0.40** | **~$0.55** |
+
+Turning on OAuth (`-c oauthEnabled=true`) adds a second secret (+$0.40/month). With no traffic
+the cost is just the secret(s); `./scripts/destroy.sh` removes everything.
 
 ### MCP client configuration
 
