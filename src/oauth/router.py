@@ -4,19 +4,20 @@ An ASGI app that handles the OAuth endpoints and delegates every other path to
 the wrapped FastMCP app. Mounted by ``_build_app()`` only when OAuth is enabled;
 when disabled the FastMCP app is used directly and the stack is identical to v2.
 
-PR-F1 handles the metadata documents and ``POST /register``. ``GET/POST
-/authorize`` and ``POST /token`` are recognized OAuth-public paths (so
-``AuthMiddleware`` lets them through) but their flow handlers land in PR-F2; until
-then they respond ``501 not_implemented``.
+PR-F1 handled the metadata documents and ``POST /register``. PR-F2 adds the full
+``GET/POST /authorize`` consent + code flow and the ``POST /token`` exchange /
+refresh rotation, all dispatched here on the same ASGI app as ``/mcp``.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
+from urllib.parse import parse_qs
 
-from src.oauth import config, metadata, registration
+from src.oauth import authorize, config, metadata, registration, token
 
 Scope = MutableMapping[str, Any]
 Message = MutableMapping[str, Any]
@@ -80,13 +81,42 @@ class OAuthRouter:
             status, payload = registration.register(body, base)
             await _send_json(send, status, payload)
             return
-        if path in (AUTHORIZE, TOKEN):
-            # Flow handlers land in PR-F2; the paths are reserved here so the
-            # auth gate already treats them as public (is_oauth_path).
-            await _send_json(send, 501, {"error": "not_implemented"})
+        if path == AUTHORIZE and method == "GET":
+            params = _query_params(scope)
+            status, html_body, headers = authorize.authorize_page(params, base)
+            await _send_html(send, status, html_body, headers)
+            return
+        if path == AUTHORIZE and method == "POST":
+            form = await _read_form_body(receive)
+            status, body_text, headers = authorize.authorize_submit(
+                form, base, is_lambda=_is_lambda()
+            )
+            if status in (301, 302, 303, 307, 308):
+                await _send_redirect(send, status, headers)
+            else:
+                await _send_html(send, status, body_text, headers)
+            return
+        if path == TOKEN and method == "POST":
+            form = await _read_form_body(receive)
+            status, payload = token.token(form, base)
+            await _send_json(send, status, payload)
             return
 
         await _send_json(send, 405, {"error": "Method not allowed"})
+
+
+def _is_lambda() -> bool:
+    """True when running under the Lambda runtime (``AWS_LAMBDA_RUNTIME_API``)."""
+    return "AWS_LAMBDA_RUNTIME_API" in os.environ
+
+
+def _query_params(scope: Scope) -> dict[str, str]:
+    """Parse the request query string into a flat ``{name: value}`` dict."""
+    raw = scope.get("query_string", b"") or b""
+    if isinstance(raw, str):
+        raw = raw.encode("latin-1")
+    parsed = parse_qs(raw.decode("latin-1"), keep_blank_values=True)
+    return {k: v[0] for k, v in parsed.items() if v}
 
 
 def _header(scope: Scope, name: str) -> str | None:
@@ -134,3 +164,44 @@ async def _send_json(send: Send, status: int, body_dict: dict[str, Any]) -> None
     ]
     await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
+
+
+async def _read_form_body(receive: Receive) -> dict[str, str]:
+    """Read an ``application/x-www-form-urlencoded`` body into a flat dict."""
+    chunks: list[bytes] = []
+    while True:
+        message = await receive()
+        if message["type"] == "http.request":
+            chunks.append(message.get("body", b"") or b"")
+            if not message.get("more_body", False):
+                break
+        else:  # pragma: no cover - disconnect mid-body
+            break
+    raw = b"".join(chunks)
+    if not raw:
+        return {}
+    parsed = parse_qs(raw.decode("latin-1"), keep_blank_values=True)
+    return {k: v[0] for k, v in parsed.items() if v}
+
+
+def _encode_headers(headers: list[tuple[str, str]]) -> list[list[bytes]]:
+    return [[k.encode("latin-1"), v.encode("latin-1")] for k, v in headers]
+
+
+async def _send_html(
+    send: Send, status: int, body_text: str, headers: list[tuple[str, str]]
+) -> None:
+    """Send an HTML response with the supplied (already security-set) headers."""
+    body = body_text.encode("utf-8")
+    encoded = _encode_headers(headers)
+    encoded.append([b"content-length", str(len(body)).encode()])
+    await send({"type": "http.response.start", "status": status, "headers": encoded})
+    await send({"type": "http.response.body", "body": body})
+
+
+async def _send_redirect(send: Send, status: int, headers: list[tuple[str, str]]) -> None:
+    """Send an empty-body redirect with the supplied ``Location`` headers."""
+    encoded = _encode_headers(headers)
+    encoded.append([b"content-length", b"0"])
+    await send({"type": "http.response.start", "status": status, "headers": encoded})
+    await send({"type": "http.response.body", "body": b""})

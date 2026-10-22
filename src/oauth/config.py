@@ -58,6 +58,34 @@ def dev_auto_approve_requested() -> bool:
     return _env(DEV_AUTO_APPROVE_ENV) == "true"
 
 
+def dev_auto_approve_active(is_lambda: bool) -> bool:
+    """True when dev auto-approve is actually in effect at request time (AC-F1.9).
+
+    Auto-approve (skipping the interactive owner-secret consent form) runs **only**
+    when **all three** hold:
+
+    1. ``LIBBY_MCP_OAUTH_DEV_AUTO_APPROVE=true`` is explicitly set, **and**
+    2. the process is **not** on Lambda (``is_lambda`` is False), **and**
+    3. ``LIBBY_MCP_PUBLIC_BASE_URL`` is explicitly set to a loopback origin
+       (host exactly ``127.0.0.1``/``localhost``/``::1``).
+
+    This never relaxes the AC-F1.8 startup requirement that an owner secret is
+    configured — the server refuses to start in OAuth mode with no owner secret,
+    so there is no state in which auto-approve runs with none configured. It only
+    suppresses the consent-form prompt. The startup check (``check_startup_config``)
+    already fails fast when the flag is set with an unset/non-loopback base URL
+    (AC-F1.10), so this request-time helper is a defensive re-check.
+    """
+    if not dev_auto_approve_requested():
+        return False
+    if is_lambda:
+        return False
+    base = _env(PUBLIC_BASE_URL_ENV)
+    if base is None or not is_loopback_base(base):
+        return False
+    return True
+
+
 def effective_owner_secret() -> str | None:
     """The owner-consent secret: owner-secret env else API key (AC-F1.6)."""
     return _env(OWNER_SECRET_ENV) or _env(API_KEY_ENV)

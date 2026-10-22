@@ -581,7 +581,7 @@ PR-F1 does not claim ACs whose implementation ships in a later task.)
 
 **PR-F1 exit:** `make preflight` green; checkboxes ticked; squash-merge.
 
-### Task F3: Authorize + Token (PKCE, Refresh Rotation)
+### Task F3: Authorize + Token (PKCE, Refresh Rotation) — [x] Done (PR #31)
 
 **Requirements:** FR-F1 (AC-F1.6, AC-F1.9, AC-F1.10, AC-F1.11), FR-F2 (AC-F2.4–F2.6, AC-F2.11, AC-F2.12), FR-F5 (AC-F5.2–F5.3), FR-F6 (AC-F6.5–F6.6), FR-F11 (AC-F11.3–F11.6 — `invalid_target` on non-canonical `resource`, missing-defaults-canonical, canonical `aud` on issued access+refresh tokens, `/mcp` `aud` check)
 
@@ -663,7 +663,7 @@ PR-F1 does not claim ACs whose implementation ships in a later task.)
 
 **Acceptance:** AC-F1.6, AC-F1.9, AC-F1.10, AC-F1.11, AC-F2.4–F2.6, **AC-F2.11 (consent-page HTML-escaping / `<script>` client_name test)**, **AC-F2.12 (consent-page `Content-Security-Policy: frame-ancestors 'none'` + `Cache-Control: no-store` headers)**, the **`/token` code-exchange / refresh-rotation halves of AC-F2.9 + AC-F2.10** (consuming a code within its TTL and issuing/rotating refresh+access tokens — the signed-token *structure* + TTL defaults are owned by F2, HIGH-8), the **`/token`-grant token-swap half of AC-F6.5** (reject an access token replayed as a refresh/code grant, and a code/refresh presented as a `/mcp` Bearer — the jwt.py verify half is owned by F2), AC-F9.1, **AC-F11.3–F11.6** (`invalid_target` enforcement + missing-defaults-canonical + canonical `aud` on issued tokens + `/mcp` `aud` check, HIGH-7), AC-CRITICAL-2, F5.2–F5.3. (AC-F6.6 — constant-time comparisons — is owned by F2; F3 reuses `hmac.compare_digest` but does not own that AC.)
 
-### Task F4: Per-Client Compatibility
+### Task F4: Per-Client Compatibility — [x] Done (PR #31)
 
 **Requirements:** FR-F4 (AC-F4.1–F4.5), FR-F9 (AC-F9.2–F9.3) — AC-F9.1 (the `/authorize` exact-match / 400-not-redirect rule) is owned by Task F3; F4 owns the registration-time scheme rules.
 
@@ -695,7 +695,7 @@ PR-F1 does not claim ACs whose implementation ships in a later task.)
 
 **Acceptance:** AC-F4.1–F4.5, AC-F9.2–F9.3.
 
-### Task F5: README + Docker/Lambda OAuth Wiring
+### Task F5: README + Docker/Lambda OAuth Wiring — [x] Done (PR #31)
 
 **Requirements:** FR-F1 (AC-F1.7), FR-E3 (compose env), FR-E4 (**AC-E4.6**, optional stack params)
 

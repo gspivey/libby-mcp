@@ -291,5 +291,5 @@ PKCE, refresh rotation; per-client redirect URIs; README + Docker/Lambda OAuth
 wiring).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `F3`, `F4`, `F5`
-- [ ] Complete
+- [x] Complete · PR: #31
 - Depends-on: item 15 (PR-F1 merged — `jwt.py` + metadata + auth modes)
