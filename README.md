@@ -161,31 +161,34 @@ They run on a daily schedule in CI, not on every PR.
 
 ### Local integration harness (MCP protocol over HTTP)
 
-`make integration-test` exercises the full MCP protocol surface — the ASGI app,
-`AuthMiddleware`, FastMCP tool registration, and JSON-RPC request/response handling —
-against a running server, end to end with the live (public, read-only) Thunder API.
-It needs **no AWS, no Lambda, and no secrets**: a Docker image
-(`Dockerfile.integration`) serves the production ASGI app factory
-(`src.handler:_build_app`) under uvicorn, and the suite
-(`tests/integration/test_mcp_protocol.py`) drives it over HTTP with the non-secret
-test token `ci-test-key`.
+`make integration-test` tests the standalone image you actually run: it builds the root
+`Dockerfile` through `docker-compose.yml` and drives the container end to end over HTTP,
+with the live (public, read-only) Thunder API. It needs **no AWS, no Lambda, and no
+secrets**. `scripts/container-test.sh` does the work:
+
+| Step | Checks |
+| --- | --- |
+| Image shape | runs as non-root uid 10001; `/app` holds only `src/`; port bound to `127.0.0.1:8000` |
+| Static-Bearer mode (`LIBBY_MCP_API_KEY=ci-test-key`) | healthy within 30s, then the full protocol suite, including 401 on a missing/wrong token |
+| No-auth mode (`LIBBY_MCP_API_KEY` unset) | healthy within 30s, then the protocol suite with no token |
 
 ```bash
-# One command: build the image, start the container, run the suite, tear down.
+# One command: build, start, check, run the suite in both modes, tear down.
 make integration-test
 
-# Or run the pieces by hand:
-docker compose -f docker-compose.integration.yml up -d --build
-RUN_LOCAL_INTEGRATION=1 MCP_ENDPOINT=http://localhost:8000/mcp MCP_API_KEY=ci-test-key \
+# Or point the suite at a server you started yourself:
+LIBBY_MCP_API_KEY=ci-test-key docker compose up -d --build --wait
+RUN_LOCAL_INTEGRATION=1 MCP_ENDPOINT=http://127.0.0.1:8000/mcp MCP_API_KEY=ci-test-key \
   pytest tests/integration/test_mcp_protocol.py -v -m local_integration
-docker compose -f docker-compose.integration.yml down -v
+docker compose down -v
 ```
 
-The suite is marked `-m local_integration` and additionally guarded by a module-level
-`skipif` on `RUN_LOCAL_INTEGRATION=1`, so it never runs under the unit (`make test`) or
-live-Thunder (`make integration`) commands. The endpoint and token are overridable via
-`MCP_ENDPOINT` / `MCP_API_KEY` so the same suite can target a bare `uvicorn` process or a
-remote server. In CI the `local-integration` job runs this suite on every PR.
+The suite (`tests/integration/test_mcp_protocol.py`) is marked `-m local_integration` and
+additionally guarded by a module-level `skipif` on `RUN_LOCAL_INTEGRATION=1`, so it never
+runs under the unit (`make test`) or live-Thunder (`make integration`) commands.
+`MCP_ENDPOINT`, `MCP_API_KEY` and `MCP_AUTH_MODE` (`bearer` or `none`) let the same suite
+target a bare `uvicorn` process or a remote server. In CI the `local-integration` job runs
+`scripts/container-test.sh` on every push and PR.
 
 ### Branch protection (operator step)
 

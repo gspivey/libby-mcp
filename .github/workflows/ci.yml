@@ -80,21 +80,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build integration image
-        run: docker compose -f docker-compose.integration.yml build
-
-      - name: Start server
-        run: docker compose -f docker-compose.integration.yml up -d
-
-      - name: Wait for readiness (GET /mcp -> 405)
-        run: |
-          for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/mcp || true)
-            if [ "$code" = "405" ]; then echo "server up"; exit 0; fi
-            sleep 2
-          done
-          echo "server did not become ready"; exit 1
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -103,20 +88,11 @@ jobs:
       - name: Install test deps
         run: pip install -r requirements-dev.txt
 
-      - name: Run MCP protocol tests
-        env:
-          RUN_LOCAL_INTEGRATION: "1"
-          MCP_ENDPOINT: http://localhost:8000/mcp
-          MCP_API_KEY: ci-test-key
-        run: pytest tests/integration/test_mcp_protocol.py -v -m local_integration
-
-      - name: Dump container logs on failure
-        if: failure()
-        run: docker compose -f docker-compose.integration.yml logs
-
-      - name: Tear down
-        if: always()
-        run: docker compose -f docker-compose.integration.yml down -v
+      # Builds the root Dockerfile via docker-compose.yml (the image users run),
+      # checks its shape, and runs the MCP protocol suite in static-Bearer and
+      # no-auth modes. Dumps container logs and tears down on its own.
+      - name: Container test (standalone image)
+        run: bash scripts/container-test.sh
 
   comment:
     name: PR Comment

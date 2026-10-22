@@ -40,16 +40,6 @@ preflight: validate compliance ci
 integration:
 	RUN_INTEGRATION=1 pytest tests/integration/ -v -m integration
 
-## Build + run the containerized MCP server and run the protocol suite against it
+## Build the standalone image (root Dockerfile) and run the container test against it
 integration-test:
-	docker compose -f docker-compose.integration.yml up -d --build
-	@for i in $$(seq 1 30); do \
-		code=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/mcp || true); \
-		if [ "$$code" = "405" ]; then echo "server up"; break; fi; \
-		sleep 2; \
-	done
-	RUN_LOCAL_INTEGRATION=1 MCP_ENDPOINT=http://localhost:8000/mcp MCP_API_KEY=ci-test-key \
-		pytest tests/integration/test_mcp_protocol.py -v -m local_integration; \
-		status=$$?; \
-		docker compose -f docker-compose.integration.yml down -v; \
-		exit $$status
+	bash scripts/container-test.sh
