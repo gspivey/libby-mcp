@@ -33,6 +33,8 @@ from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
 from src.auth import AuthMiddleware
+from src.oauth import config as oauth_config
+from src.oauth.router import OAuthRouter
 from src.slug_directory import SlugDirectory
 from src.thunder_client import ThunderClient
 from src.tools import availability as availability_impl
@@ -311,9 +313,25 @@ def _build_app() -> AuthMiddleware:
     ``--factory`` on Docker / local (AC-E1.3/E1.5). A new instance is built per
     call because StreamableHTTPSessionManager.run() may be called only once per
     FastMCP instance.
+
+    When OAuth is enabled (``LIBBY_MCP_OAUTH_ENABLED=true``) the OAuth router is
+    mounted in front of the FastMCP app so the metadata / registration / flow
+    endpoints are reachable on the same host (FR-F2), and the startup checks
+    fail fast on a missing signing key (AC-F6.2), a missing owner secret
+    (AC-F1.8), or dev auto-approve without a loopback base URL (AC-F1.10). When
+    OAuth is disabled the FastMCP app is used directly and the stack is identical
+    to v2.
     """
     fastmcp_app = _make_mcp().streamable_http_app()
-    return AuthMiddleware(fastmcp_app)
+
+    if oauth_config.oauth_enabled():
+        # Fail fast on fatal OAuth misconfiguration (AC-F6.2 / F1.8 / F1.10).
+        oauth_config.check_startup_config(is_lambda=_IS_LAMBDA)
+        app: Any = OAuthRouter(fastmcp_app)
+    else:
+        app = fastmcp_app
+
+    return AuthMiddleware(app)
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:

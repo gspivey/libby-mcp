@@ -490,7 +490,7 @@ checkboxes ticked; squash-merge.
 > Python standard library only (`hmac`, `hashlib`, `base64`, `json`) — **no new
 > package** is added to `requirements.txt` (HIGH-4).
 
-### Task F1: Three Auth Modes + Mode Selection
+### Task F1: Three Auth Modes + Mode Selection — [x] Done (PR #30)
 
 **Requirements:** FR-F1 (AC-F1.1–F1.5, AC-F1.1-lambda), FR-F3 (AC-F3.1)
 
@@ -516,7 +516,7 @@ checkboxes ticked; squash-merge.
 rules — land in Task F2/F3; AC-F1.7 — the README mode table — lands in Task F5.
 PR-F1 does not claim ACs whose implementation ships in a later task.)
 
-### Task F2: OAuth Metadata + Endpoint Scaffolding
+### Task F2: OAuth Metadata + Endpoint Scaffolding — [x] Done (PR #30)
 
 **Requirements:** FR-F1 (AC-F1.8), FR-F2 (AC-F2.1–F2.3, F2.7–F2.10), FR-F3 (AC-F3.2–F3.3), FR-F5 (AC-F5.1), FR-F6 (AC-F6.1–F6.6, AC-CRITICAL-2), FR-F10 (AC-F10.1–F10.2), FR-F11 (AC-F11.1–F11.2, and the `aud` definition used by F11.5/F11.6)
 

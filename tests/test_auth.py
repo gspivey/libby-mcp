@@ -109,13 +109,13 @@ def set_key(monkeypatch):
     monkeypatch.setenv("LIBBY_MCP_API_KEY", "secret")
 
 
-def _http_scope(auth_header: str | None = None, method: str = "POST") -> dict:
+def _http_scope(auth_header: str | None = None, method: str = "POST", path: str = "/mcp") -> dict:
     headers: list = [
         [b"content-type", b"application/json"],
     ]
     if auth_header:
         headers.append([b"authorization", auth_header.encode()])
-    return {"type": "http", "headers": headers, "method": method}
+    return {"type": "http", "headers": headers, "method": method, "path": path}
 
 
 async def test_lifespan_passes_through():

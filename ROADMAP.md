@@ -280,7 +280,7 @@ full, then implement tasks `F1`, `F2` (three auth modes + middleware order, OAut
 metadata/`/register`, and `jwt.py` sign/verify — the stateless signed-token core).
 
 - Spec: `.kiro/specs/libby-mcp-v3/` · tasks `F1`, `F2`
-- [ ] Complete
+- [x] Complete · PR: #30
 - Depends-on: item 14 (PR-E merged — single-codebase ASGI app)
 
 ### 16. libby-mcp v3 — Group F OAuth flow + per-client + wiring (PR-F2)
