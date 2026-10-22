@@ -15,7 +15,11 @@ Gating (AC-3.3):
 
 Configuration (AC-3.2):
 - ``MCP_ENDPOINT`` (default ``http://localhost:8000/mcp``)
-- ``MCP_API_KEY`` (default ``ci-test-key``)
+- ``MCP_AUTH_MODE`` (default ``bearer``): ``bearer`` sends ``MCP_API_KEY`` and
+  checks that missing/wrong tokens get 401 (AC-E2.1/E2.4); ``none`` targets a
+  server started without ``LIBBY_MCP_API_KEY``, sends no token, and checks the
+  endpoint is served unauthenticated (AC-E2.2)
+- ``MCP_API_KEY`` (default ``ci-test-key``; ignored when ``MCP_AUTH_MODE=none``)
 - ``MCP_TIMEOUT`` (default ``20`` seconds)
 
 Thunder is hit live (DD-2): assertions use stable identifiers (Going Postal =
@@ -35,8 +39,14 @@ import httpx
 import pytest
 
 ENDPOINT = os.environ.get("MCP_ENDPOINT", "http://localhost:8000/mcp")
-API_KEY = os.environ.get("MCP_API_KEY", "ci-test-key")
+AUTH_MODE = os.environ.get("MCP_AUTH_MODE", "bearer")
+if AUTH_MODE not in ("bearer", "none"):
+    raise ValueError(f"MCP_AUTH_MODE must be 'bearer' or 'none', got {AUTH_MODE!r}")
+API_KEY: str | None = None if AUTH_MODE == "none" else os.environ.get("MCP_API_KEY", "ci-test-key")
 TIMEOUT = float(os.environ.get("MCP_TIMEOUT", "20"))
+
+bearer_only = pytest.mark.skipif(AUTH_MODE != "bearer", reason="static-Bearer mode only")
+no_auth_only = pytest.mark.skipif(AUTH_MODE != "none", reason="no-auth mode only")
 
 # Known-good fixtures (DD-4). `fairfax` verified to return totalItems > 0
 # against the live Thunder catalog before implementing the fan-out test.
@@ -317,6 +327,29 @@ def test_search_titles_bad_slug(http_client: httpx.Client, initialized: dict[str
     ), f"the error must read as human prose, not a raw status dump; got {text!r}"
 
 
+def test_search_titles_exact(http_client: httpx.Client, initialized: dict[str, str]) -> None:
+    """AC-D6.7: exact=true returns only titles whose title equals the query
+    (case-insensitive). lcpl owns Going Postal (ebook 149795)."""
+    payload = with_retry(
+        lambda: _call_tool(
+            http_client,
+            "search_titles",
+            {"library_slug": SLUG, "query": "going postal", "exact": True},
+        )
+    )
+    assert (
+        "_is_error" not in payload and "_jsonrpc_error" not in payload
+    ), f"exact search should succeed, got error: {payload}"
+    titles = payload.get("titles", [])
+    assert any(
+        t.get("id") == GOING_POSTAL_ID for t in titles
+    ), f"exact search for 'going postal' should include id {GOING_POSTAL_ID}, got {payload}"
+    for t in titles:
+        assert (
+            t["title"].casefold() == "going postal"
+        ), f"exact mode must drop non-matching titles, got {t['title']!r}"
+
+
 def test_search_titles_multi_library(
     http_client: httpx.Client, initialized: dict[str, str]
 ) -> None:
@@ -371,6 +404,7 @@ def test_get_availability_partial_batch(
     ), f"the legacy per-title error:'not_found' shape must be gone, got {by_id[BOGUS_TITLE_ID]}"
 
 
+@bearer_only
 def test_auth_missing_bearer(http_client: httpx.Client) -> None:
     """AC-3.13: a POST with no Authorization header returns HTTP 401."""
     resp = mcp_call("tools/list", {}, token=None, client=http_client)
@@ -379,12 +413,22 @@ def test_auth_missing_bearer(http_client: httpx.Client) -> None:
     ), f"missing Bearer must yield 401, got {resp.status_code}: {resp.text[:200]}"
 
 
+@bearer_only
 def test_auth_wrong_token(http_client: httpx.Client) -> None:
     """AC-3.14: a POST with a wrong Bearer token returns HTTP 401."""
     resp = mcp_call("tools/list", {}, token="wrong-token", client=http_client)
     assert (
         resp.status_code == 401
     ), f"wrong token must yield 401, got {resp.status_code}: {resp.text[:200]}"
+
+
+@no_auth_only
+def test_no_auth_serves_without_bearer(http_client: httpx.Client) -> None:
+    """AC-E2.2: with LIBBY_MCP_API_KEY unset, Docker serves /mcp unauthenticated."""
+    resp = mcp_call("tools/list", {}, token=None, client=http_client)
+    assert (
+        resp.status_code == 200
+    ), f"no-auth mode must serve /mcp without a token, got {resp.status_code}: {resp.text[:200]}"
 
 
 def test_get_mcp_returns_405(http_client: httpx.Client) -> None:

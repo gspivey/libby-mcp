@@ -2,7 +2,8 @@
 # (src.handler:_build_app) under uvicorn — no AWS account, credentials, or
 # Secrets Manager access required (AC-E3.7). Multi-stage + non-root (AC-E3.1),
 # serving /mcp on port 8000 (AC-E3.2). The runtime image matches the Lambda
-# runtime and Dockerfile.integration at python:3.12-slim (HIGH-11 / NFR-6.4).
+# runtime at python:3.12-slim (HIGH-11 / NFR-6.4). Tested end to end by
+# scripts/container-test.sh (`make integration-test`, CI local-integration job).
 
 # ---- builder: install deps into a self-contained venv ----
 FROM python:3.12-slim AS builder
